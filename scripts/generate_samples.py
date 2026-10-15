@@ -8,6 +8,9 @@ Geometry, calibration truth and masks are stored separately from the photographs
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import io
 import json
 import math
 from pathlib import Path
@@ -135,7 +138,30 @@ def transform_points(points, matrix):
     return cv2.perspectiveTransform(np.array(points, np.float64)[None], matrix)[0].tolist()
 
 
-def create_sample(page, name, title, outer, holes, quad, seed, analytic_area=None):
+def load_ai_textures():
+    """Load immutable generated material maps; verify bytes before rendering.
+
+    The image model generated surface appearance only. Markers, silhouettes,
+    calibration, perspective, and masks are produced by this deterministic code.
+    """
+    assets = ROOT / "assets"
+    bundle = json.loads((assets / "ai-steel-textures.json").read_text())
+    provenance = json.loads((assets / "ai-steel-provenance.json").read_text())
+    if bundle.get("schema_version") != 1:
+        raise ValueError("Unsupported AI texture bundle schema")
+    textures = {}
+    for entry in bundle["textures"]:
+        data = base64.b64decode(entry["base64"], validate=True)
+        if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+            raise ValueError(f"AI texture hash mismatch: {entry['id']}")
+        textures[entry["id"]] = Image.open(io.BytesIO(data)).convert("RGB")
+    if set(textures) != {"l-shape", "notched", "trapezoid-hole"}:
+        raise ValueError("Expected the three versioned AI steel texture assets")
+    write_json(SAMPLES / "ai-texture-provenance.json", provenance)
+    return textures
+
+
+def create_sample(page, name, title, outer, holes, quad, seed, analytic_area=None, ai_texture=None):
     rng = np.random.default_rng(seed)
     width, height = page.size
     mask = Image.new("L", page.size, 0)
@@ -158,6 +184,12 @@ def create_sample(page, name, title, outer, holes, quad, seed, analytic_area=Non
         length = int(rng.integers(20, 280))
         shade = int(rng.integers(80, 180))
         scratch.line((int(x), int(y), int(x + length), int(y - length * 0.21)), fill=(shade, shade + 4, min(255, shade + 8)), width=int(rng.integers(1, 4)))
+    if ai_texture is not None:
+        # Material mapping in the geometric fixture renderer. This is not an
+        # image-model claim about exact physical dimensions or marker validity.
+        x0, y0, x1, y1 = mask.getbbox()
+        steel_img = Image.new("RGB", page.size)
+        steel_img.paste(ai_texture.resize((x1 - x0, y1 - y0), Image.Resampling.LANCZOS), (x0, y0))
     rendered = page.copy()
     # Small contact shadow is intentionally an image challenge, not geometry truth.
     shadow = mask.filter(ImageFilter.GaussianBlur(5))
@@ -178,7 +210,14 @@ def create_sample(page, name, title, outer, holes, quad, seed, analytic_area=Non
     alpha = paper_mask[..., None].astype(np.float32) / 255
     photo = np.uint8(warped * alpha + background * (1 - alpha))
     photo = cv2.GaussianBlur(photo, (3, 3), 0.35)
-    Image.fromarray(photo).save(SAMPLES / f"{name}.png", optimize=True)
+    photo_extension = "jpg" if ai_texture is not None else "png"
+    photo_path = SAMPLES / f"{name}.{photo_extension}"
+    if ai_texture is not None:
+        Image.fromarray(photo).save(photo_path, quality=91, optimize=True, progressive=True)
+        # Verify the actual delivered JPEG pixels, including compression.
+        photo = np.array(Image.open(photo_path).convert("RGB"))
+    else:
+        Image.fromarray(photo).save(photo_path, optimize=True)
     board_mask = mask.crop((235, 200, 2735, 1900))
     board_mask.save(SAMPLES / f"{name}.mask.png", optimize=True)
     # This image is a diagnostic reference only, not used to shortcut detection.
@@ -205,6 +244,15 @@ def create_sample(page, name, title, outer, holes, quad, seed, analytic_area=Non
         "limitations": ["Synthetic planar scene; no lens distortion or real manufacturing uncertainty.",
             "The circle is represented by a 128-sided polygon; analytic circle area is stored separately.",
             "Use photo pixels for detection/inference; ground truth is for evaluation only."]}
+    if ai_texture is not None:
+        truth.update({
+            "shape_type": name.removeprefix("ai-"),
+            "fixture_kind": "ai-texture-composite",
+            "appearance_source": "AI-generated steel texture + controlled geometric composite",
+            "texture_id": name.removeprefix("ai-"),
+            "texture_provenance_path": "samples/ai-texture-provenance.json",
+        })
+        truth["limitations"].append("AI generation supplies steel appearance only; this is not an untouched AI photograph or a camera capture. Board, valid markers, silhouette, contact shadow, table, and perspective are controlled renderer output.")
     write_json(SAMPLES / f"{name}.truth.json", truth)
     detector = cv2.aruco.ArucoDetector(DICTIONARY)
     corners, ids, _ = detector.detectMarkers(photo)
@@ -214,10 +262,16 @@ def create_sample(page, name, title, outer, holes, quad, seed, analytic_area=Non
     errors = []
     for detected, marker_id in zip(corners, ids.flatten()):
         errors.extend(np.linalg.norm(detected[0] - np.array(marker_camera[marker_id]), axis=1).tolist())
-    return {"id": name, "title": title, "image": f"samples/{name}.png", "truth": f"samples/{name}.truth.json",
+    result = {"id": name, "title": title, "image": f"samples/{name}.{photo_extension}", "truth": f"samples/{name}.truth.json",
             "mask": f"samples/{name}.mask.png", "area_mm2": geometry_area,
             "marker_detection_verified": got, "marker_corner_max_error_px": max(errors),
             "marker_corner_rms_error_px": float(np.sqrt(np.mean(np.square(errors))))}
+    if ai_texture is not None:
+        result.update({"fixture_kind": "ai-texture-composite", "synthetic": True,
+                       "appearance_source": "AI-generated steel texture + controlled geometric composite",
+                       "texture_id": name.removeprefix("ai-"),
+                       "texture_provenance": "samples/ai-texture-provenance.json"})
+    return result
 
 
 def main():
@@ -231,8 +285,15 @@ def main():
         ("trapezoid-hole", "台形 + 丸穴 / reflection", outer_trap, [circle], [[120,205],[1570,70],[1715,1130],[225,1280]], 173, 16500 - math.pi * 20 ** 2),
     ]
     report = [create_sample(page, *definition) for definition in definitions]
+    textures = load_ai_textures()
+    for definition in definitions:
+        name, title, *geometry = definition
+        report.append(create_sample(page, f"ai-{name}", f"AI texture / {title}", *geometry, ai_texture=textures[name]))
     write_json(SAMPLES / "index.json", report)
-    write_json(SAMPLES / "generation-report.json", {"generator": "OpenCV + Pillow synthetic fixtures", "opencv_version": cv2.__version__, "samples": report})
+    write_json(SAMPLES / "generation-report.json", {
+        "generator": "OpenCV + Pillow synthetic fixtures; optional AI-generated material maps",
+        "opencv_version": cv2.__version__, "ai_texture_provenance": "samples/ai-texture-provenance.json",
+        "samples": report})
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 

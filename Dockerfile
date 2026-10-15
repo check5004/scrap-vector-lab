@@ -3,6 +3,7 @@ WORKDIR /app
 COPY requirements-fixtures.txt ./
 RUN pip install --no-cache-dir -r requirements-fixtures.txt
 COPY scripts/generate_samples.py scripts/generate_samples.py
+COPY assets/ai-steel-textures.json assets/ai-steel-provenance.json assets/
 RUN python scripts/generate_samples.py
 
 FROM node:22-bookworm-slim AS build
