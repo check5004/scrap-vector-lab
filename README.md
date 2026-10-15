@@ -14,6 +14,10 @@ Smartphone-photo scrap-material vectorization and per-edge measurement PoC. A **
 - Compare overlays, net area, per-edge lengths/angles, sampled bidirectional boundary error, area error, hole-count mismatch, and topology-gated edge-length errors.
 - JSON, physical-mm SVG (separate dimensions layer, evenodd holes), and DXF closed LWPOLYLINE (INSUNITS=4, y-up CAD coordinates).
 
+## Photo library and camera
+
+Use the separate **写真ライブラリ・ファイルから選ぶ** button for saved images, or **カメラで撮影** for camera capture. The library input has no `capture` attribute. Both routes share validation and local decoding; HEIC failures provide JPEG/PNG recovery guidance. [Import behavior, EXIF tests, and iPhone verification limits](docs/PHOTO_IMPORT.md).
+
 ## Important observed limitation
 
 **Automatic hole extraction is not solved by this model.** In real local CPU model tests, U²-NetP completely filled the synthetic 40 mm hole. A bounded test of the much larger full U²-Net model (176 MB) also filled it and did not improve the other fixtures. The app explicitly warns about this failure, benchmarks it as a missed hole, and supports drawing the hole in Mode C. It never substitutes truth geometry or a color-threshold hole for an AI result. See `public/samples/u2netp-python-baseline.json`, `public/samples/u2net-full-python-baseline.json`, and [runtime research](docs/RUNTIME_RESEARCH.md).
