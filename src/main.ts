@@ -44,11 +44,12 @@ import {
   geometryDebugImage,
   type DebugStage,
 } from "./debug";
+import { createProviderKeyStore, providerStorageKey, type KeyStorageStatus } from "./key-storage";
 type Mode = "A" | "B" | "C";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const base = import.meta.env.BASE_URL;
-const html = `<div id="progress" class="progressbar hidden"></div><header class="top"><div class="brand"><div class="logo">⌑</div><div><strong>端材ラボ</strong><small>SCRAP VECTOR LAB / 0.2</small></div></div><div class="topnote">写真から、ものづくりの次の一枚へ。</div><span class="pill">EXPERIMENTAL · PoC</span></header><section class="intro"><div><div class="eyebrow">PHOTO → PLANE → VECTOR</div><h1>端材のかたちを、寸法に。</h1><p>4つのマーカーで平面補正。AIで輪郭を抽出し、指先で仕上げる。</p></div><div class="flow"><span><b>01</b>撮影</span><span><b>02</b>AI抽出</span><span><b>03</b>編集・書き出し</span></div></section><main class="layout"><aside class="panel sidebar"><section class="section"><h2 class="sectiontitle">01　写真を用意<span>INPUT</span></h2><input id="file" type="file" accept="image/*" aria-label="写真ライブラリ・ファイルから選ぶ" class="hidden"><input id="cameraFile" type="file" accept="image/*" capture="environment" aria-label="カメラで撮影" class="hidden"><div class="stack"><button id="upload" type="button" class="full primary" aria-controls="file">＋ 写真ライブラリ・ファイルから選ぶ</button><button id="camera" type="button" class="full" aria-controls="cameraFile">カメラで撮影</button></div><p class="hint">ID 0〜3をすべて写してください。<br>写真はMode Bでは端末内だけで処理。</p><p class="sample-label">AI画像で生成した鋼材の質感</p><div class="samples"><button class="sample ai-sample" data-sample="ai-l-shape">AI · L字型</button><button class="sample ai-sample" data-sample="ai-notched">AI · 凹型</button><button class="sample ai-sample" data-sample="ai-trapezoid-hole">AI · 台形＋穴</button></div><p class="sample-origin">AIで生成した鋼材の質感を、寸法が既知の形状・台紙に合成。マーカーは正規のコードです。実物を撮影した写真ではありません。</p><p class="sample-label">従来の合成写真 · 比較用</p><div class="samples"><button class="sample" data-sample="l-shape"><svg viewBox="0 0 30 23"><path d="M2 2H28V10H15V22H2Z"/></svg>L字型</button><button class="sample" data-sample="notched"><svg viewBox="0 0 30 23"><path d="M2 2H10V12H20V2H28V22H2Z"/></svg>凹型</button><button class="sample" data-sample="trapezoid-hole"><svg viewBox="0 0 30 23"><path fill-rule="evenodd" d="M8 2H23L29 22H1ZM20 12a5 5 0 1 0 -10 0a5 5 0 1 0 10 0"/></svg>台形＋穴</button></div></section><section class="section"><h2 class="sectiontitle">02　基準スケール<span>CALIBRATION</span></h2><label class="field">規定の内側角の間隔<select id="preset"><option value="a4">A4用紙 · 250 × 170 mm</option><option value="medium">中型台 · 500 × 500 mm</option><option value="large">大型台 · 1000 × 1000 mm</option><option value="custom">カスタム寸法</option></select></label><div id="custom" class="row hidden"><label class="field">横 mm<input id="width" type="number" value="2000" min="10" max="10000"></label><label class="field">縦 mm<input id="height" type="number" value="1000" min="10" max="10000"></label></div><button id="rectify" class="full">マーカー検出・平面補正</button><p id="scale" class="hint">2500 × 1700 px · 0.100 mm/px</p><div class="row" style="margin-top:12px"><a class="hint" href="${base}print/a4-marker-sheet.svg" download>A4台紙 SVG ↗</a><a class="hint" href="${base}print/a4-marker-sheet.png" download>PNG ↗</a><button id="print" style="padding:5px 8px;min-height:30px;font-size:10px">印刷</button></div><p class="hint">A4横・100% / 実際のサイズで印刷。<br>100 mmの目盛りを定規で実測してください。<br>切り離したマーカーも台紙と同じ向きに配置。</p></section><section class="section advanced"><h2 class="sectiontitle">03　AIでベクター化<span>INFERENCE</span></h2><button id="runB" class="full primary" disabled>B · 端末内AIで輪郭を抽出</button><p class="hint">U²-NetP / ONNX · 実推論 · API費用なし<br>320 × 320のAIマスクをミリ座標へ変換</p><p class="warn">既知の制限: 従来の穴サンプルでは、直径40 mmの穴を見落とします。Cで穴を描いて修正できます。</p><label class="field" style="margin-top:15px">直線化の許容差 ε <b id="epsilonValue">1.0 mm</b><input id="epsilon" type="range" min="0.5" max="10" step="0.1" value="1"></label><details><summary>マスクの閾値を調整</summary><label class="field">前景確率 <b id="thresholdValue">0.50</b><input id="threshold" type="range" min="0.1" max="0.9" step="0.01" value="0.5"></label></details><details style="margin-top:18px"><summary>A · GPT-6 Lunaで輪郭を推論 <span class="badge">外部API</span></summary><label class="field" style="margin-top:12px">API接続先<select id="provider"><option value="openrouter" selected>OpenRouter（OpenRouterのキー）</option><option value="openai">OpenAI直接（OpenAIのキー）</option></select></label><p id="providerTarget" class="provider-target"></p><label class="field"><span id="apiKeyLabel">OpenRouter APIキー（このタブのメモリのみ）</span><input id="apiKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false"></label><p id="keyValidation" class="provider-note" role="status"></p><button id="clearKey" class="full">キーを消去</button><label class="field" style="margin-top:12px">画像の方眼間隔<select id="gridstep"><option value="10">10 mm</option><option value="25">25 mm</option><option value="50">50 mm</option><option value="100">100 mm</option></select></label><label class="confirm"><input id="consent" type="checkbox"><span id="consentText"></span></label><button id="runA" class="full" disabled>A · GPT-6 Lunaで推論</button><p class="hint">ブラウザでのキー入力は信頼する端末・このPoC限定でご利用ください。本番運用ではサーバー経由を推奨。キーなしでは実行しません。接続先ごとのキーが必要です。接続先変更時はキーを消去。実行時に提供状況を確認。失敗時の代替推論・架空結果はありません。</p></details></section></aside><section class="workspace"><div class="panel"><div class="canvashead"><div class="legend"><b>MEASUREMENT CANVAS</b><label><input type="checkbox" id="showA" checked><i class="dot a"></i>A</label><label><input type="checkbox" id="showB" checked><i class="dot b"></i>B</label><label><input type="checkbox" id="showC" checked><i class="dot c"></i>C</label></div><select id="view" aria-label="背景表示"><option value="rectified">補正後</option><option value="photo">撮影画像</option><option value="mask">AIマスク</option><option value="grid">方眼</option></select></div><div class="canvaswrap"><svg id="editor" viewBox="0 0 250 170" role="img" aria-label="端材の輪郭と編集可能な頂点"></svg></div><div class="canvasfooter"><span id="sourceLabel">SAMPLE / 合成写真を読み込み中</span><span id="markerLabel">MARKERS —</span></div><div class="editbar"><button id="editC" disabled>Cへコピーして編集</button><button id="undo" disabled>↶ 戻す</button><button id="delete" disabled>頂点を削除</button><button id="snap" disabled>直角に整列 ±5°</button><button id="drawHole" disabled>＋ 穴を描く</button><button id="drawOuter">外周を手描き</button><button id="finishDraw" class="hidden">図形を確定</button><button id="cancelDraw" class="hidden">描画を中止</button><span id="selected" class="selectednum"></span></div></div><div id="status" role="status" aria-live="polite" class="status">合成写真を読み込み中…</div><p class="hint"><a href="#debugPanel">マーカー認識・処理途中の画像を見る ↓</a></p><p class="hint">Cモード: ピンをドラッグ、辺をタップして頂点追加。ピンを選んで削除、またはダブルタップ。輪郭が交差する編集は確定できません。</p><section id="debugPanel" class="panel debug-panel"></section><div class="panel compare"><h2>検証ベンチ <span class="hint">/ 合成写真の既知寸法との比較</span></h2><div id="benchmark" class="benchgrid"></div><p class="hint">正解は評価だけに使用し、AIの入力・予測には使用しません。曲線は多角形近似。誤差はこの合成画像での結果で、実物の精度保証ではありません。</p></div></section><aside class="panel results"><section class="section"><h2 class="sectiontitle">計測結果<span>MM UNITS</span></h2><div class="tabs"><button data-mode="A">A · LLM</button><button data-mode="B" class="active">B · AI</button><button data-mode="C">C · 編集</button></div><p class="hint" style="margin-top:18px">正味面積（外周 − 穴）</p><div class="summaryvalue"><span id="area">—</span><small>mm²</small></div><div class="submetric"><span>外周の頂点</span><b id="vertices">—</b></div><div class="submetric"><span>検出した穴</span><b id="holes">—</b></div><div class="submetric"><span>外周長</span><b id="perimeter">— mm</b></div><div id="warnings"></div></section><section class="section"><h2 class="sectiontitle">各辺の寸法<span>LENGTH / ANGLE</span></h2><div id="edges" class="edge-list"><p class="hint">AI抽出後に表示されます。</p></div></section><section class="section exports"><h2 class="sectiontitle">実寸で書き出す<span>EXPORT 1:1</span></h2><div class="stack"><button id="exportSvg" disabled>SVG　↗</button><button id="exportDxf" disabled>DXF　↗</button><button id="exportJson" disabled>JSON　↗</button></div><p class="hint">現在選択中のモードを出力。<br>SVG: mm + 寸法レイヤー<br>DXF: mm / 閉じたLWPOLYLINE</p><a class="hint" href="https://github.com/check5004/scrap-vector-lab" target="_blank" rel="noopener">ソース・検証手順 ↗</a></section></aside></main><footer class="footer"><p>検証用ツールです。0.1 mm/pxは画像の刻み幅であり、計測精度ではありません。厚み・反り・カメラのレンズ歪み・斜め撮影・印刷倍率で誤差が生じます。マーカーと測定面を同じ平面にし、重要な寸法は必ず実測してください。AIは穴や細部を見落とすことがあります。</p><span>DICT_4X4_50<br>0 TL · 1 TR · 2 BR · 3 BL</span></footer>`;
+const html = `<div id="progress" class="progressbar hidden"></div><header class="top"><div class="brand"><div class="logo">⌑</div><div><strong>端材ラボ</strong><small>SCRAP VECTOR LAB / 0.2</small></div></div><div class="topnote">写真から、ものづくりの次の一枚へ。</div><span class="pill">EXPERIMENTAL · PoC</span></header><section class="intro"><div><div class="eyebrow">PHOTO → PLANE → VECTOR</div><h1>端材のかたちを、寸法に。</h1><p>4つのマーカーで平面補正。AIで輪郭を抽出し、指先で仕上げる。</p></div><div class="flow"><span><b>01</b>撮影</span><span><b>02</b>AI抽出</span><span><b>03</b>編集・書き出し</span></div></section><main class="layout"><aside class="panel sidebar"><section class="section"><h2 class="sectiontitle">01　写真を用意<span>INPUT</span></h2><input id="file" type="file" accept="image/*" aria-label="写真ライブラリ・ファイルから選ぶ" class="hidden"><input id="cameraFile" type="file" accept="image/*" capture="environment" aria-label="カメラで撮影" class="hidden"><div class="stack"><button id="upload" type="button" class="full primary" aria-controls="file">＋ 写真ライブラリ・ファイルから選ぶ</button><button id="camera" type="button" class="full" aria-controls="cameraFile">カメラで撮影</button></div><p class="hint">ID 0〜3をすべて写してください。<br>写真はMode Bでは端末内だけで処理。</p><p class="sample-label">AI画像で生成した鋼材の質感</p><div class="samples"><button class="sample ai-sample" data-sample="ai-l-shape">AI · L字型</button><button class="sample ai-sample" data-sample="ai-notched">AI · 凹型</button><button class="sample ai-sample" data-sample="ai-trapezoid-hole">AI · 台形＋穴</button></div><p class="sample-origin">AIで生成した鋼材の質感を、寸法が既知の形状・台紙に合成。マーカーは正規のコードです。実物を撮影した写真ではありません。</p><p class="sample-label">従来の合成写真 · 比較用</p><div class="samples"><button class="sample" data-sample="l-shape"><svg viewBox="0 0 30 23"><path d="M2 2H28V10H15V22H2Z"/></svg>L字型</button><button class="sample" data-sample="notched"><svg viewBox="0 0 30 23"><path d="M2 2H10V12H20V2H28V22H2Z"/></svg>凹型</button><button class="sample" data-sample="trapezoid-hole"><svg viewBox="0 0 30 23"><path fill-rule="evenodd" d="M8 2H23L29 22H1ZM20 12a5 5 0 1 0 -10 0a5 5 0 1 0 10 0"/></svg>台形＋穴</button></div></section><section class="section"><h2 class="sectiontitle">02　基準スケール<span>CALIBRATION</span></h2><label class="field">規定の内側角の間隔<select id="preset"><option value="a4">A4用紙 · 250 × 170 mm</option><option value="medium">中型台 · 500 × 500 mm</option><option value="large">大型台 · 1000 × 1000 mm</option><option value="custom">カスタム寸法</option></select></label><div id="custom" class="row hidden"><label class="field">横 mm<input id="width" type="number" value="2000" min="10" max="10000"></label><label class="field">縦 mm<input id="height" type="number" value="1000" min="10" max="10000"></label></div><button id="rectify" class="full">マーカー検出・平面補正</button><p id="scale" class="hint">2500 × 1700 px · 0.100 mm/px</p><div class="row" style="margin-top:12px"><a class="hint" href="${base}print/a4-marker-sheet.svg" download>A4台紙 SVG ↗</a><a class="hint" href="${base}print/a4-marker-sheet.png" download>PNG ↗</a><button id="print" style="padding:5px 8px;min-height:30px;font-size:10px">印刷</button></div><p class="hint">A4横・100% / 実際のサイズで印刷。<br>100 mmの目盛りを定規で実測してください。<br>切り離したマーカーも台紙と同じ向きに配置。</p></section><section class="section advanced"><h2 class="sectiontitle">03　AIでベクター化<span>INFERENCE</span></h2><button id="runB" class="full primary" disabled>B · 端末内AIで輪郭を抽出</button><p class="hint">U²-NetP / ONNX · 実推論 · API費用なし<br>320 × 320のAIマスクをミリ座標へ変換</p><p class="warn">既知の制限: 従来の穴サンプルでは、直径40 mmの穴を見落とします。Cで穴を描いて修正できます。</p><label class="field" style="margin-top:15px">直線化の許容差 ε <b id="epsilonValue">1.0 mm</b><input id="epsilon" type="range" min="0.5" max="10" step="0.1" value="1"></label><details><summary>マスクの閾値を調整</summary><label class="field">前景確率 <b id="thresholdValue">0.50</b><input id="threshold" type="range" min="0.1" max="0.9" step="0.01" value="0.5"></label></details><details style="margin-top:18px"><summary>A · GPT-6 Lunaで輪郭を推論 <span class="badge">外部API</span></summary><label class="field" style="margin-top:12px">API接続先<select id="provider"><option value="openrouter" selected>OpenRouter（OpenRouterのキー）</option><option value="openai">OpenAI直接（OpenAIのキー）</option></select></label><p id="providerTarget" class="provider-target"></p><label class="field"><span id="apiKeyLabel">OpenRouter APIキー（このブラウザに保存）</span><input id="apiKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" aria-describedby="keyStorageHelp keyStorageStatus"></label><p id="keyStorageStatus" class="provider-note" role="status" aria-live="polite"></p><p id="keyStorageHelp" class="hint">入力したキーは接続先ごとに、この端末・ブラウザのlocalStorageへ自動保存され、リロード後も復元されます。共有端末では使わず、利用後は削除してください。暗号化保存ではなく、同じサイト（ホスト名）のページや拡張機能から読まれる可能性があります。別の端末・ブラウザには同期しません。プライベートモードやサイトデータ削除では失われる場合があります。保存だけではAPIに送信しません。</p><p id="keyValidation" class="provider-note" role="status"></p><button id="clearKey" class="full">この接続先の保存キーを削除</button><label class="field" style="margin-top:12px">画像の方眼間隔<select id="gridstep"><option value="10">10 mm</option><option value="25">25 mm</option><option value="50">50 mm</option><option value="100">100 mm</option></select></label><label class="confirm"><input id="consent" type="checkbox"><span id="consentText"></span></label><button id="runA" class="full" disabled>A · GPT-6 Lunaで推論</button><p class="hint">ブラウザでのキー入力は信頼する端末・このPoC限定でご利用ください。本番運用ではサーバー経由を推奨。キーなしでは実行しません。接続先ごとのキーが必要です。接続先変更時は、その接続先の保存キーだけを復元し、送信の確認を解除します。実行時に提供状況を確認。失敗時の代替推論・架空結果はありません。</p></details></section></aside><section class="workspace"><div class="panel"><div class="canvashead"><div class="legend"><b>MEASUREMENT CANVAS</b><label><input type="checkbox" id="showA" checked><i class="dot a"></i>A</label><label><input type="checkbox" id="showB" checked><i class="dot b"></i>B</label><label><input type="checkbox" id="showC" checked><i class="dot c"></i>C</label></div><select id="view" aria-label="背景表示"><option value="rectified">補正後</option><option value="photo">撮影画像</option><option value="mask">AIマスク</option><option value="grid">方眼</option></select></div><div class="canvaswrap"><svg id="editor" viewBox="0 0 250 170" role="img" aria-label="端材の輪郭と編集可能な頂点"></svg></div><div class="canvasfooter"><span id="sourceLabel">SAMPLE / 合成写真を読み込み中</span><span id="markerLabel">MARKERS —</span></div><div class="editbar"><button id="editC" disabled>Cへコピーして編集</button><button id="undo" disabled>↶ 戻す</button><button id="delete" disabled>頂点を削除</button><button id="snap" disabled>直角に整列 ±5°</button><button id="drawHole" disabled>＋ 穴を描く</button><button id="drawOuter">外周を手描き</button><button id="finishDraw" class="hidden">図形を確定</button><button id="cancelDraw" class="hidden">描画を中止</button><span id="selected" class="selectednum"></span></div></div><div id="status" role="status" aria-live="polite" class="status">合成写真を読み込み中…</div><p class="hint"><a href="#debugPanel">マーカー認識・処理途中の画像を見る ↓</a></p><p class="hint">Cモード: ピンをドラッグ、辺をタップして頂点追加。ピンを選んで削除、またはダブルタップ。輪郭が交差する編集は確定できません。</p><section id="debugPanel" class="panel debug-panel"></section><div class="panel compare"><h2>検証ベンチ <span class="hint">/ 合成写真の既知寸法との比較</span></h2><div id="benchmark" class="benchgrid"></div><p class="hint">正解は評価だけに使用し、AIの入力・予測には使用しません。曲線は多角形近似。誤差はこの合成画像での結果で、実物の精度保証ではありません。</p></div></section><aside class="panel results"><section class="section"><h2 class="sectiontitle">計測結果<span>MM UNITS</span></h2><div class="tabs"><button data-mode="A">A · LLM</button><button data-mode="B" class="active">B · AI</button><button data-mode="C">C · 編集</button></div><p class="hint" style="margin-top:18px">正味面積（外周 − 穴）</p><div class="summaryvalue"><span id="area">—</span><small>mm²</small></div><div class="submetric"><span>外周の頂点</span><b id="vertices">—</b></div><div class="submetric"><span>検出した穴</span><b id="holes">—</b></div><div class="submetric"><span>外周長</span><b id="perimeter">— mm</b></div><div id="warnings"></div></section><section class="section"><h2 class="sectiontitle">各辺の寸法<span>LENGTH / ANGLE</span></h2><div id="edges" class="edge-list"><p class="hint">AI抽出後に表示されます。</p></div></section><section class="section exports"><h2 class="sectiontitle">実寸で書き出す<span>EXPORT 1:1</span></h2><div class="stack"><button id="exportSvg" disabled>SVG　↗</button><button id="exportDxf" disabled>DXF　↗</button><button id="exportJson" disabled>JSON　↗</button></div><p class="hint">現在選択中のモードを出力。<br>SVG: mm + 寸法レイヤー<br>DXF: mm / 閉じたLWPOLYLINE</p><a class="hint" href="https://github.com/check5004/scrap-vector-lab" target="_blank" rel="noopener">ソース・検証手順 ↗</a></section></aside></main><footer class="footer"><p>検証用ツールです。0.1 mm/pxは画像の刻み幅であり、計測精度ではありません。厚み・反り・カメラのレンズ歪み・斜め撮影・印刷倍率で誤差が生じます。マーカーと測定面を同じ平面にし、重要な寸法は必ず実測してください。AIは穴や細部を見落とすことがあります。</p><span>DICT_4X4_50<br>0 TL · 1 TR · 2 BR · 3 BL</span></footer>`;
 $("app").innerHTML = html;
 let board: Board = { ...PRESETS.a4 },
   source: HTMLCanvasElement | undefined,
@@ -90,6 +91,30 @@ const debug = new DebugPanel(
     }),
 );
 const provider = () => $<HTMLSelectElement>("provider").value as Provider;
+const keyStore = createProviderKeyStore();
+function showKeyStorageStatus(result: KeyStorageStatus) {
+  const messages: Record<KeyStorageStatus, string> = {
+    loaded: "この接続先の保存キーを復元しました。送信するには下の確認が必要です。",
+    empty: "この接続先の保存キーはありません。入力すると自動保存します。",
+    saved: "このブラウザに保存しました。リロード後も復元されます。",
+    cleared: "この接続先の保存キーを削除しました。",
+    "invalid-cleared": "キーの形式または保存データが不正です。以前の保存値は削除しました。",
+    unavailable: "ブラウザの保存領域を利用できません。入力したキーはこのタブだけで使用します。",
+    "save-failed": "保存できませんでした。以前の保存値は削除し、入力したキーはこのタブだけで使用します。",
+    "clear-failed": "このタブのキーは消去しましたが、保存領域の削除を確認できません。ブラウザのサイトデータを削除してください。再読み込みすると古いキーが戻る可能性があります。",
+    "unsupported-provider": "未対応の接続先です。キーは保存・復元しません。",
+  };
+  $("keyStorageStatus").textContent = messages[result];
+  $("keyStorageStatus").classList.toggle("warn", ["unavailable", "save-failed", "clear-failed", "invalid-cleared"].includes(result));
+}
+function restoreProviderKey() {
+  const result = keyStore.load(provider());
+  $<HTMLInputElement>("apiKey").value = result.key;
+  $<HTMLInputElement>("consent").checked = false;
+  showKeyStorageStatus(result.status);
+  updateProviderUI();
+  updateButtons();
+}
 function processing(message: string) {
   status(message);
   debug.progress(message);
@@ -106,7 +131,7 @@ function updateProviderUI() {
     settings = PROVIDERS[selected];
   $("providerTarget").textContent = `${settings.model} → ${settings.endpoint}`;
   $("apiKeyLabel").textContent =
-    `${settings.name} APIキー（このタブのメモリのみ）`;
+    `${settings.name} APIキー（このブラウザに保存）`;
   $<HTMLInputElement>("apiKey").placeholder =
     selected === "openrouter" ? "sk-or-v1-…" : "sk-…";
   $("consentText").textContent =
@@ -796,32 +821,39 @@ for (const id of ["epsilon", "threshold"])
     ).toFixed(2);
     revectorize();
   };
-for (const id of ["apiKey", "consent"])
-  $<HTMLInputElement>(id).oninput = () => {
-    if (activeRequest) activeRequest.abort();
-    updateProviderUI();
-    updateButtons();
-  };
+$<HTMLInputElement>("apiKey").oninput = () => {
+  activeRequest?.abort();
+  $<HTMLInputElement>("consent").checked = false;
+  const result = keyStore.save(provider(), $<HTMLInputElement>("apiKey").value);
+  if (result.status === "clear-failed") $<HTMLInputElement>("apiKey").value = "";
+  showKeyStorageStatus(result.status);
+  updateProviderUI();
+  updateButtons();
+};
+$<HTMLInputElement>("consent").oninput = () => {
+  activeRequest?.abort();
+  updateButtons();
+};
 $("clearKey").onclick = () => {
   activeRequest?.abort();
   $<HTMLInputElement>("apiKey").value = "";
   $<HTMLInputElement>("consent").checked = false;
+  showKeyStorageStatus(keyStore.clear(provider()).status);
   updateProviderUI();
   updateButtons();
-  status(
-    "APIキーを消去し、実行中なら通信を中止しました。送信済みデータや発生済み料金は取り消せません。",
-  );
+  status("このタブのAPIキーを消去しました。保存領域の削除結果はキー欄に表示しています。実行中なら通信を中止しますが、送信済みデータや発生済み料金は取り消せません。");
 };
 $<HTMLSelectElement>("provider").onchange = () => {
   activeRequest?.abort();
-  $<HTMLInputElement>("apiKey").value = "";
-  $<HTMLInputElement>("consent").checked = false;
-  updateProviderUI();
-  updateButtons();
-  status(
-    `接続先を${PROVIDERS[provider()].name}に変更し、キーを消去しました。接続先専用のキーを入力してください。`,
-  );
+  restoreProviderKey();
+  status(`接続先を${PROVIDERS[provider()].name}に変更しました。この接続先のキーだけを使用します。送信前に確認してください。`);
 };
+window.addEventListener("storage", (event) => {
+  try { if (event.storageArea !== window.localStorage) return; } catch { return; }
+  if (event.key !== null && event.key !== providerStorageKey(provider())) return;
+  activeRequest?.abort();
+  restoreProviderKey();
+});
 $("runA").onclick = () =>
   void guarded(async () => {
     if (!flat || !$<HTMLInputElement>("consent").checked)
@@ -1153,6 +1185,9 @@ window.addEventListener("pagehide", () => {
   pipelineAbort?.abort();
   $<HTMLInputElement>("apiKey").value = "";
 });
-updateProviderUI();
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) restoreProviderKey();
+});
+restoreProviderKey();
 render();
 void loadSample("l-shape");

@@ -17,9 +17,21 @@ Mode A supports two explicit destinations. Selecting a provider never switches a
 
 ## Key handling and safety
 
-`validateProviderKey(provider, key)` checks the key locally and returns a safe message or `null`. OpenRouter requires the currently documented `sk-or-v1-` prefix; OpenAI rejects `sk-or-` keys. Changing provider must clear the UI key and consent. These checks stop a wrong-provider key before any request; they do not establish that a key is valid.
+`validateProviderKey(provider, key)` checks the key locally and returns a safe message or `null`. OpenRouter requires the currently documented `sk-or-v1-` prefix; OpenAI rejects `sk-or-` keys. Changing provider restores only the selected provider's validated saved key and clears photo/paid-usage consent. These checks stop a wrong-provider key before any request; they do not establish that a key is valid.
 
-The provider layer only holds key material in function-local memory. It does not write it to browser storage, exports, URLs, analytics, or logs. Authenticated fetches use the selected provider's fixed endpoints, omit cookies and referrers, and reject redirects. No arbitrary endpoint configuration is supported. This browser BYOK proof of concept remains appropriate only on a trusted page/device; production should use a secure authenticated backend.
+The API provider layer only holds key material in function-local memory. A separate UI key store persists user-entered keys in this browser at the user's explicit request. Keys are never put in exports, diagnostic reports, URLs, analytics, logs or sessionStorage. Authenticated fetches use the selected provider's fixed endpoints, omit cookies and referrers, and reject redirects. No arbitrary endpoint configuration is supported. This browser BYOK proof of concept remains appropriate only on a trusted page/device; production should use a secure authenticated backend.
+
+### Browser-local persistence
+
+- Validly formatted input is automatically saved, trimmed, in versioned records under app-specific names, separately for OpenRouter and OpenAI. Reload restores OpenRouter by default; switching to OpenAI restores only its own key. Saving/restoring does not make a network request or remember photo/paid-usage consent.
+- The input remains `type=password`. The selected provider's delete button removes its record and clears the input and consent. It does not delete the other provider's key. Another open app tab observes changes/removals and resets its consent and request. Page exit clears the live input; the saved record intentionally remains.
+- Record shape, version, provider, key format and length are checked before restoration. Invalid records are discarded. Invalid or empty replacement input removes the previous saved value. No legacy or other application's storage entries are imported.
+- Access, read, write and deletion failures are caught without echoing raw exceptions. A failed save falls back to tab-only use after trying to remove the previous saved value. A failed deletion clears the live input, suppresses that provider's restoration in this tab, and warns that the user must clear browser site data; a reload may otherwise restore the old value. No success is claimed for an unconfirmed deletion.
+- localStorage is **not encrypted**. Scripts on the same origin, browser extensions, and someone with access to the browser profile can potentially read it. GitHub Pages projects under `check5004.github.io` share an origin; path-specific namespaces prevent accidental collisions, not access by another page on that origin. Use a trusted personal device, not a shared device. No application-owned credential is embedded in source or deployment.
+- Storage is scoped to this browser profile and origin, and the app does not sync it across devices. Private-browsing exit, site-data deletion or browser policy can clear/block it. The UI displays the storage result next to the key input.
+- Tests use unmistakably synthetic keys and intercepted requests. They cover reload, provider isolation, explicit deletion, wrong-prefix and malformed storage, unavailable/throwing storage, cross-tab deletion, canceled requests and leakage checks. They do not use or demonstrate a real authenticated API call.
+
+Browser behavior references checked 2026-10-16: [Mozilla localStorage documentation](https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage), [Mozilla storage event documentation](https://developer.mozilla.org/en-US/docs/Web/API/Window/storage_event).
 
 OpenRouter receives the photograph and board dimensions and routes the request to its model provider. Their data policies apply. `store: false` on direct OpenAI requests is not a guarantee of zero retention.
 

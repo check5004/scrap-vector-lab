@@ -119,7 +119,7 @@ test("real three-sample benchmark preserves and reports model failure on a hole"
     }
   }
 });
-test("missing marker fails closed, custom board rescales, key stays out of storage", async ({
+test("missing marker fails closed, custom board rescales, invalid key stays out of storage", async ({
   page,
 }, info) => {
   await page.goto("/");
@@ -363,7 +363,8 @@ test("provider routing blocks wrong keys locally and shows a mocked 401 without 
       () =>
         Object.keys(localStorage).length + Object.keys(sessionStorage).length,
     ),
-  ).toBe(0);
+  ).toBe(1); // Only the validated, provider-scoped local key record is persisted.
+  expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
   const pending = page.waitForEvent("download");
   await page.locator("#debugExport").click();
   const downloaded = await pending,
