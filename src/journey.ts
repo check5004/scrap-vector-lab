@@ -1,7 +1,7 @@
 import './journey.css';
 import { cloneGeometry, type Geometry, type Point } from './geometry';
 import type { Board, MarkerDetectionReport, MaskResult, homographyDetails } from './vision';
-import { clamp01, dimensionEdges, fitPoints, interpolateQuad, interpolateView, interpolateCamera, orientCropCamera, lerp, matrix3d, projectPoint, rectangleQuad, rectangleToQuad, smoothStep, transformPoint, type DimensionEdge, type Quad, type ViewTransform } from './journey-math';
+import { clamp01, conditionedPlaneMatrix, CSS_PLANE_EXTENT, dimensionEdges, fitPoints, interpolateQuad, interpolateView, interpolateCamera, orientCropCamera, lerp, matrix3d, projectPoint, rectangleQuad, rectangleToQuad, smoothStep, transformPoint, type DimensionEdge, type Quad, type ViewTransform } from './journey-math';
 
 export type JourneyStage = 'source' | 'markers' | 'crop' | 'rectify' | 'mask' | 'contour' | 'dimensions';
 export type JourneyProcessing = 'idle' | 'running' | 'complete' | 'error' | 'cancelled';
@@ -187,7 +187,7 @@ export class MeasurementJourney {
     this.rawPath.removeAttribute('data-geometry-mm'); this.simplifiedPath.removeAttribute('data-geometry-mm');
     this.reference.removeAttribute('data-source-corners'); this.reference.setAttribute('points', '');
     this.rawPath.setAttribute('d', ''); this.simplifiedPath.setAttribute('d', '');
-    for (const key of ['data-homography', 'data-transform', 'data-corners']) this.plane.removeAttribute(key);
+    for (const key of ['data-homography', 'data-transform', 'data-corners', 'data-css-transform', 'data-css-size']) this.plane.removeAttribute(key);
     this.sourceCanvas.removeAttribute('data-source-size'); this.sourceCanvas.removeAttribute('data-camera');
     this.flatCanvas.removeAttribute('data-output-size');
     this.maskCanvas.removeAttribute('data-mask-size'); this.maskCanvas.removeAttribute('data-threshold');
@@ -216,7 +216,8 @@ export class MeasurementJourney {
       rectangleToQuad(flat.width, flat.height, this.homography.source_points_px as Quad);
       this.reference.dataset.sourceCorners = JSON.stringify(this.homography.source_points_px);
       this.plane.dataset.homography = JSON.stringify(this.homography.source_to_rectified_h);
-      this.plane.style.width = `${flat.width}px`; this.plane.style.height = `${flat.height}px`;
+      this.plane.style.width = `${CSS_PLANE_EXTENT}px`; this.plane.style.height = `${CSS_PLANE_EXTENT}px`;
+      this.plane.dataset.cssSize = JSON.stringify([CSS_PLANE_EXTENT, CSS_PLANE_EXTENT]);
       this.flatCanvas.dataset.outputSize = JSON.stringify([flat.width, flat.height]);
       this.changed();
     } catch { this.fallback = true; this.changed(); }
@@ -472,12 +473,14 @@ export class MeasurementJourney {
       const rectQuad = rectangleQuad(this.flatCanvas.width, this.flatCanvas.height).map(point => transformPoint(point, rectView)) as Quad;
       planeQuad = staticFallback ? rectQuad : interpolateQuad(quad.map(point => transformPoint(point, view)) as Quad, rectQuad, clamp01(p - 2));
       planeMap = rectangleToQuad(this.flatCanvas.width, this.flatCanvas.height, planeQuad);
-      this.plane.style.transform = staticFallback ? `matrix(${rectView.scale},0,0,${rectView.scale},${rectView.x},${rectView.y})` : matrix3d(planeMap);
+      const cssMap = conditionedPlaneMatrix(planeMap, this.flatCanvas.width, this.flatCanvas.height);
+      this.plane.style.transform = staticFallback ? `matrix(${cssMap[0]},${cssMap[3]},${cssMap[1]},${cssMap[4]},${cssMap[2]},${cssMap[5]})` : matrix3d(cssMap);
+      this.plane.dataset.cssTransform = JSON.stringify(cssMap);
       this.plane.dataset.transform = JSON.stringify(planeMap); this.plane.dataset.corners = JSON.stringify(planeQuad);
       if (staticFallback && p >= 2) { this.sourceCanvas.style.opacity = '0'; this.shade.style.opacity = '0'; }
       this.reference.setAttribute('points', quadPoints(planeQuad));
       this.reference.style.opacity = String(p < 1 ? 0 : p < 2 ? clamp01(p - 1) : lerp(1, 0.24, clamp01(p - 2)));
-    } else { this.reference.style.opacity = '0'; this.plane.removeAttribute('data-transform'); this.plane.removeAttribute('data-corners'); }
+    } else { this.reference.style.opacity = '0'; this.plane.removeAttribute('data-transform'); this.plane.removeAttribute('data-corners'); this.plane.removeAttribute('data-css-transform'); }
     const markerOpacity = clamp01(p) * (1 - clamp01(p - 2));
     for (const marker of this.markers) {
       const reveal = clamp01(p * 1.55 - marker.index * 0.14);

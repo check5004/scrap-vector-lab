@@ -46,13 +46,14 @@ The system's **prefers-reduced-motion** setting removes continuous camera/warp m
 - Rectified image dimensions come from the chosen board preset/custom calibration. The A4 working region is **250 × 170 mm**, rendered at **2500 × 1700 px**.
 - The neural mask is **320 × 320**. Raw contour sample `(x, y)` maps to `((x + 0.5) × boardWidth / maskWidth, (y + 0.5) × boardHeight / maskHeight)` millimetres. Horizontal and vertical scales are deliberately separate.
 - Simplification is applied in millimetres. Final SVG view mapping preserves the same geometry and dimensions as the editor/export; browser resizing only changes screen placement.
+- The CSS plane uses a normalized **100 × 100 CSS-unit** domain to avoid browser precision loss in tiny perspective coefficients. This is coordinate conditioning only: the native rectified and mask canvas buffers retain their real resolutions and are not downsampled to 100 × 100. The logical pixel-to-scene map and the conditioned CSS map have the same endpoints.
 - The intermediate animated projection is illustrative. The settled rectified image and final contour coordinates come from the real pipeline; the animation does not improve their accuracy.
 
 A **0.1 mm/px** raster spacing is not a measurement-accuracy claim. Native model resolution, missed holes, lens distortion, tilt, glare, print scaling, thickness and non-coplanarity can dominate error. Keep reference markers and the measured surface coplanar, verify the printed ruler and check important dimensions physically.
 
 ## Developer verification
 
-The dedicated browser suite is `tests/browser/journey.spec.ts`. It loads the repository's real sample images, genuine ArUco dictionary, pinned ONNX model and local WASM runtime. It cross-checks the journey against diagnostic artifacts and geometry; it never mocks a neural prediction. Every test blocks off-origin HTTP(S) requests before navigation. No paid provider call or real API key is used.
+The dedicated browser suite is `tests/browser/journey.spec.ts`. It loads the repository's real sample images, genuine ArUco dictionary, pinned ONNX model and local WASM runtime. It cross-checks the journey against diagnostic artifacts and geometry; it never mocks a neural prediction. Transient empty corner probes and the painted canvas bounds measure actual browser layout against the shared image/SVG map within 0.05 screen pixels, rather than trusting serialized computed-style matrix text. Every test blocks off-origin HTTP(S) requests before navigation. No paid provider call or real API key is used.
 
 Run after preparing the normal project assets:
 

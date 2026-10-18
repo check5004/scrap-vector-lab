@@ -79,6 +79,20 @@ export function projectPoint(matrix: readonly number[], point: Point): Point {
   if (!Number.isFinite(projected.x + projected.y)) throw Error('Non-finite projected point.');
   return projected;
 }
+export const CSS_PLANE_EXTENT = 100;
+/**
+ * Condition the DOM plane's coordinate domain without changing its raster buffer.
+ * Chromium can quantize very small CSS perspective coefficients. A fixed 100×100
+ * CSS box keeps those coefficients useful; the canvas still contains every native
+ * pixel. The square also avoids fractional CSS layout-size rounding. Overlays and
+ * exported geometry continue to use the authoritative native-pixel homography.
+ */
+export function conditionedPlaneMatrix(matrix: ProjectiveMatrix, pixelWidth: number, pixelHeight: number): ProjectiveMatrix {
+  if (!(pixelWidth > 0 && pixelHeight > 0) || !Number.isFinite(pixelWidth + pixelHeight) || matrix.some(value => !Number.isFinite(value))) throw Error('Invalid CSS plane domain.');
+  const x = pixelWidth / CSS_PLANE_EXTENT, y = pixelHeight / CSS_PLANE_EXTENT;
+  return [matrix[0] * x, matrix[1] * y, matrix[2], matrix[3] * x, matrix[4] * y, matrix[5], matrix[6] * x, matrix[7] * y, matrix[8]];
+}
+
 /** CSS is column-major; its w component performs the same division as projectPoint. */
 export function matrix3d(matrix: ProjectiveMatrix): string {
   const [a, b, c, d, e, f, g, h, i] = matrix;

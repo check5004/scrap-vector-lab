@@ -102,22 +102,53 @@ async function setRange(page: Page, id: string, value: string) {
 async function expectPlaneMapping(page: Page) {
   const map = await page.locator("#journeyPlane").evaluate((node) => {
     const plane = node as HTMLElement;
-    const width = parseFloat(plane.style.width), height = parseFloat(plane.style.height);
-    const matrix = new DOMMatrixReadOnly(getComputedStyle(plane).transform);
+    const image = plane.querySelector<HTMLCanvasElement>("#journeyRectified")!;
+    const viewport = plane.parentElement!;
+    const origin = viewport.getBoundingClientRect();
+    const overlay = document.querySelector<SVGSVGElement>("#journeyOverlay")!;
+    const cssWidth = parseFloat(plane.style.width), cssHeight = parseFloat(plane.style.height);
+    // Probe actual browser geometry. Computed-style matrix text is a lossy
+    // serialization, and tiny perspective terms can also lose CSS precision.
+    // These transient, empty DOM elements do not alter any image/model data.
+    const renderedCorners = [[0, 0], [cssWidth, 0], [cssWidth, cssHeight], [0, cssHeight]].map(([x, y]) => {
+      const probe = document.createElement("span");
+      probe.style.cssText = `position:absolute;display:block;left:${x}px;top:${y}px;width:0;height:0;margin:0;padding:0;border:0;pointer-events:none;`;
+      plane.append(probe);
+      const bounds = probe.getBoundingClientRect();
+      probe.remove();
+      return { x: bounds.left - origin.left, y: bounds.top - origin.top };
+    });
+    const bounds = image.getBoundingClientRect();
     return {
-      matrix: JSON.parse(plane.dataset.transform!), corners: JSON.parse(plane.dataset.corners!), width, height,
-      cssCorners: [[0, 0], [width, 0], [width, height], [0, height]].map(([x, y]) => {
-        const point = new DOMPoint(x, y).matrixTransform(matrix);
-        return { x: point.x / point.w, y: point.y / point.w };
-      }),
+      matrix: JSON.parse(plane.dataset.transform!), corners: JSON.parse(plane.dataset.corners!),
+      cssMatrix: JSON.parse(plane.dataset.cssTransform!), cssSize: JSON.parse(plane.dataset.cssSize!),
+      width: image.width, height: image.height, cssWidth, cssHeight, renderedCorners,
+      viewport: { width: viewport.clientWidth, height: viewport.clientHeight },
+      viewBox: { width: overlay.viewBox.baseVal.width, height: overlay.viewBox.baseVal.height },
+      renderedBounds: { left: bounds.left - origin.left, top: bounds.top - origin.top, right: bounds.right - origin.left, bottom: bounds.bottom - origin.top },
     };
   });
   expect(map.matrix).toHaveLength(9);
   expect(map.matrix.every(Number.isFinite)).toBeTruthy();
+  expect(map.viewBox).toEqual(map.viewport);
+  expect(map.viewport.width).toBeGreaterThan(0);
+  expect(map.viewport.height).toBeGreaterThan(0);
+  expect(map.cssWidth).toBeGreaterThan(0);
+  expect(map.cssHeight).toBeGreaterThan(0);
+  expect(map.cssSize).toEqual([100, 100]);
+  expect([map.cssWidth, map.cssHeight]).toEqual(map.cssSize);
+  const cssCorners = [{ x: 0, y: 0 }, { x: map.cssWidth, y: 0 }, { x: map.cssWidth, y: map.cssHeight }, { x: 0, y: map.cssHeight }];
+  expectPoints(cssCorners.map((p) => project(map.cssMatrix, p)), map.corners, 1e-7);
   const corners = [{ x: 0, y: 0 }, { x: map.width, y: 0 }, { x: map.width, y: map.height }, { x: 0, y: map.height }];
   expectPoints(corners.map((p) => project(map.matrix, p)), map.corners, 1e-7);
-  // Computed CSS matrices are rounded by the browser; 0.05 scene px is sufficient.
-  expectPoints(map.cssCorners, map.corners, 0.05);
+  // Keep the original strict screen-space budget, now measured from real layout.
+  expectPoints(map.renderedCorners, map.corners, 0.05);
+  const expectedBounds = {
+    left: Math.min(...map.corners.map((p: Point) => p.x)), top: Math.min(...map.corners.map((p: Point) => p.y)),
+    right: Math.max(...map.corners.map((p: Point) => p.x)), bottom: Math.max(...map.corners.map((p: Point) => p.y)),
+  };
+  for (const key of ["left", "top", "right", "bottom"] as const)
+    expect(Math.abs(map.renderedBounds[key] - expectedBounds[key]), `painted image ${key}`).toBeLessThanOrEqual(0.05);
   const reference = await page.locator("#journeyOverlay [data-reference-quad]").evaluate((node) =>
     Array.from((node as SVGPolygonElement).points).map((point) => ({ x: point.x, y: point.y })));
   expectPoints(reference, map.corners, 0.002);
@@ -513,7 +544,15 @@ test("a whole-photo half turn stays projective and aligned through the moving mi
   expect(stage(report, "markers").details.missing_ids).toEqual([]);
   expect(stage(report, "markers").details.selected.map((marker: any) => marker.id)).toEqual([0, 1, 2, 3]);
   await selectStage(page, "crop");
-  await expectPlaneMapping(page);
+  const crop = await expectPlaneMapping(page);
+  // This genuine fixture exposes the precision regression: its native-pixel
+  // perspective coefficient was serialized from -4.1582e-6 to -4.1e-6,
+  // moving the painted far corner by 0.185px on Chromium in CI. A conditioned
+  // CSS domain must preserve the strict 0.05px probe/bounds checks above.
+  expect(Math.abs(crop.matrix[6])).toBeGreaterThan(0);
+  expect(Math.abs(crop.matrix[6])).toBeLessThan(1e-5);
+  expect(crop.cssMatrix[6]).toBeCloseTo(crop.matrix[6] * crop.width / crop.cssWidth, 12);
+  expect(crop.cssMatrix[7]).toBeCloseTo(crop.matrix[7] * crop.height / crop.cssHeight, 12);
   await page.locator("#journeyPlay").click();
   await page.waitForFunction(() => {
     const value = Number(document.querySelector<HTMLElement>("#journey-root")!.dataset.position);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { rectangleToQuad, projectPoint, matrix3d, rectangleQuad, interpolateQuad, fitPoints, transformPoint, dimensionEdges, smoothStep, orientCropCamera, interpolateCamera } from '../src/journey-math.ts';
+import { rectangleToQuad, projectPoint, matrix3d, rectangleQuad, interpolateQuad, fitPoints, transformPoint, dimensionEdges, smoothStep, orientCropCamera, interpolateCamera, conditionedPlaneMatrix, CSS_PLANE_EXTENT } from '../src/journey-math.ts';
 import type { Quad } from '../src/journey-math.ts';
 const close = (a: number, b: number, epsilon = 1e-7) => assert.ok(Math.abs(a - b) < epsilon, `${a} ≠ ${b}`);
 const photoQuad: Quad = [{ x: 134, y: 82 }, { x: 904, y: 143 }, { x: 811, y: 624 }, { x: 73, y: 731 }];
@@ -74,4 +74,44 @@ test('0/90/180/270° whole-photo rotations remain convex throughout camera rotat
       close(actual.x, expected.x); close(actual.y, expected.y);
     });
   }
+});
+
+
+test('conditioned CSS plane retains native-pixel projective mapping at every corner and interior pixel', () => {
+  for (const [width, height] of [[2500, 1700], [2000, 2000], [2000, 100], [100, 2000]]) {
+    const native = rectangleToQuad(width, height, photoQuad);
+    const css = conditionedPlaneMatrix(native, width, height);
+    for (const point of [...rectangleQuad(width, height), { x: width * .37, y: height * .63 }]) {
+      const expected = projectPoint(native, point);
+      const actual = projectPoint(css, { x: point.x / width * CSS_PLANE_EXTENT, y: point.y / height * CSS_PLANE_EXTENT });
+      close(actual.x, expected.x); close(actual.y, expected.y);
+    }
+    assert.throws(() => conditionedPlaneMatrix(native, 0, height));
+  }
+});
+
+test('conditioned plane stays below .05px error under CSS perspective coefficient quantization', () => {
+  const viewport = { width: 980, height: 620 }, target = rectangleQuad(700, 476, 140, 72);
+  let worstNative = 0, worstConditioned = 0;
+  // Reproduce the observed absolute precision loss without relying on a browser's
+  // matrix serialization string. Browser tests additionally measure actual paint.
+  const quantize = (matrix: readonly number[]) => matrix.map((value, index) => index === 6 || index === 7 ? Math.trunc(value * 1e7) / 1e7 : value);
+  for (const degrees of [0, 90, 180, 270]) {
+    const original = photoQuad.map(point => transformPoint(point, { scale: 1, rotation: degrees * Math.PI / 180, x: 1200, y: 1200 })) as Quad;
+    const view = orientCropCamera(original, viewport, 60);
+    const normalized = original.map(point => transformPoint(point, view)) as Quad;
+    for (let frame = 0; frame <= 100; frame++) {
+      const quad = interpolateQuad(normalized, target, frame / 100);
+      const native = rectangleToQuad(2500, 1700, quad);
+      const css = conditionedPlaneMatrix(native, 2500, 1700);
+      rectangleQuad(2500, 1700).forEach((point, i) => {
+        const nativePoint = projectPoint(quantize(native), point);
+        const cssPoint = projectPoint(quantize(css), { x: point.x / 2500 * CSS_PLANE_EXTENT, y: point.y / 1700 * CSS_PLANE_EXTENT });
+        worstNative = Math.max(worstNative, Math.hypot(nativePoint.x - quad[i].x, nativePoint.y - quad[i].y));
+        worstConditioned = Math.max(worstConditioned, Math.hypot(cssPoint.x - quad[i].x, cssPoint.y - quad[i].y));
+      });
+    }
+  }
+  assert.ok(worstNative > .05, `Regression fixture must exercise the original loss: ${worstNative}`);
+  assert.ok(worstConditioned < .05, `Conditioned plane paint error ${worstConditioned}px`);
 });
