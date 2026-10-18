@@ -218,6 +218,14 @@ export class MeasurementJourney {
       this.plane.dataset.homography = JSON.stringify(this.homography.source_to_rectified_h);
       this.plane.style.width = `${CSS_PLANE_EXTENT}px`; this.plane.style.height = `${CSS_PLANE_EXTENT}px`;
       this.plane.dataset.cssSize = JSON.stringify([CSS_PLANE_EXTENT, CSS_PLANE_EXTENT]);
+      // Keep native-sized canvas layers during the perspective animation. Painting
+      // the pixels into a 100px CSS bitmap would blur fine texture before the
+      // browser re-rasterizes at the settled scale. The inner affine transform
+      // only changes coordinates; the outer map still owns the projective warp.
+      for (const canvas of [this.flatCanvas, this.maskCanvas]) {
+        canvas.style.width = `${flat.width}px`; canvas.style.height = `${flat.height}px`;
+        canvas.style.transform = `scale(${CSS_PLANE_EXTENT / flat.width},${CSS_PLANE_EXTENT / flat.height})`;
+      }
       this.flatCanvas.dataset.outputSize = JSON.stringify([flat.width, flat.height]);
       this.changed();
     } catch { this.fallback = true; this.changed(); }

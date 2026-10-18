@@ -18,8 +18,8 @@
 .journey-scene { position: relative; isolation: isolate; height: clamp(320px, 43vw, 590px); min-height: 320px; overflow: hidden; background-color: #20291f; background-image: radial-gradient(ellipse at 50% 45%, #3b4937 0%, #263223 55%, #1b231a 100%); }
 .journey-source, .journey-plane { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .journey-source { max-width: none; max-height: none; will-change: transform, opacity; }
-.journey-plane { transform-style: flat; will-change: transform; }
-.journey-plane canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; max-width: none; max-height: none; }
+.journey-plane { transform-style: preserve-3d; will-change: transform; }
+.journey-plane canvas { position: absolute; top: 0; left: 0; max-width: none; max-height: none; transform-origin: 0 0; will-change: transform; }
 #journeyMask { image-rendering: pixelated; }
 .journey-overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
 .journey-shade { fill: #11190e; }
@@ -56,7 +56,8 @@
 .measurement-journey[data-processing="cancelled"] .journey-process { background: #f1eee6; color: #716958; }
 .measurement-journey[data-processing="running"] .journey-process-label::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin: 0 6px 1px 0; background: #63884c; }
 .measurement-journey[data-reduced-motion="true"] .journey-source,
-.measurement-journey[data-reduced-motion="true"] .journey-plane { will-change: auto; }
+.measurement-journey[data-reduced-motion="true"] .journey-plane,
+.measurement-journey[data-reduced-motion="true"] .journey-plane canvas { will-change: auto; }
 @media (max-width: 1150px) {
   .journey-heading { align-items: flex-start; flex-direction: column; gap: 13px; }
   .journey-actions { width: 100%; }

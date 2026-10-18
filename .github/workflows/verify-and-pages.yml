@@ -41,7 +41,7 @@ jobs:
           grep -q 'Scrap Vector Lab' /tmp/app.html
           curl -fsS http://127.0.0.1:8080/print/dictionary.json | grep -q 'DICT_4X4_50'
           curl -fsSI http://127.0.0.1:8080/vendor/ort-wasm-simd-threaded.mjs | grep -i 'content-type: application/javascript'
-          APP_URL=http://127.0.0.1:8080 npm run test:browser -- --project=chromium
+          APP_URL=http://127.0.0.1:8080 PLAYWRIGHT_HTML_OUTPUT_DIR=playwright-report-container npm run test:browser -- --project=chromium --output=test-results-container
           curl -fsS http://127.0.0.1:8080/models/u2netp.onnx -o /tmp/model.onnx
           echo '309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8  /tmp/model.onnx' | sha256sum -c -
       - uses: actions/upload-artifact@v4
@@ -51,6 +51,8 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            playwright-report-container/
+            test-results-container/
           retention-days: 7
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
