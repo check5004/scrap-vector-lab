@@ -162,6 +162,7 @@ test("real JPEG EXIF orientations survive the shared decode-to-canvas pipeline e
     }
     return canvas.toDataURL("image/jpeg", 1).split(",")[1];
   });
+  await page.locator("#toggleEditor").click();
   const jpeg = Buffer.from(encoded, "base64");
   // Expected displayed corners in this list are TL, TR, BL, BR.
   const corners = [
