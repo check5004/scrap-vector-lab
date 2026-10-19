@@ -227,7 +227,7 @@ test('real AI-textured search commits exact epsilon, restores before state, and 
   expect(after.board_size_mm).toEqual(before.board_size_mm);
   await expect(page.locator('#warnings')).toContainText('精度・写真との一致を保証しません');
   const version = await page.locator('#appVersion').innerText();
-  expect(version).toMatch(/^0\.3\.0-dev\.3\+(?:[a-f0-9]{7}|local)$/);
+  expect(version).toMatch(/^0\.3\.0\+(?:[a-f0-9]{7}|local)$/);
   expect(after.provenance.app_build).toEqual(diagnostics.app_build);
   expect(result.app_build).toEqual(diagnostics.app_build);
   expect(diagnostics.app_build.version).toBe(version);
