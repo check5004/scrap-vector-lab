@@ -117,7 +117,7 @@ function fail(provider: Provider, code: string, message: string, status: number 
 }
 
 /** Fetches are cancellable, omit browser credentials/referrers, and reject redirects. */
-async function request(
+export async function providerRequest(
  provider: Provider, stage: Exclude<ProviderStage, 'response'>, init: RequestInit,
  signal?: AbortSignal,
 ): Promise<{ response: Response; body: unknown }> {
@@ -177,7 +177,7 @@ function geometryFromText(text: string, provider: Provider, board: Board): Geome
  }
  return geometry;
 }
-function outputText(body: JsonRecord, provider: Provider): string {
+export function providerOutputText(body: JsonRecord, provider: Provider): string {
  if (provider === 'openrouter') {
   if (!Array.isArray(body.choices) || body.choices.length !== 1 || !record(body.choices[0])) return fail(provider, 'MISSING_OUTPUT', 'APIは図形データを返しませんでした。');
   const choice = body.choices[0];
@@ -195,14 +195,14 @@ function outputText(body: JsonRecord, provider: Provider): string {
  if (!text.trim()) return fail(provider, 'MISSING_OUTPUT', 'APIは図形データを返しませんでした。');
  return text;
 }
-function reportedModel(body: JsonRecord, provider: Provider): string {
+export function providerReportedModel(body: JsonRecord, provider: Provider): string {
  const expected = PROVIDERS[provider].model;
  if (typeof body.model !== 'string' || !(body.model === expected || (body.model.startsWith(`${expected}-`) && /^\d{4}-?\d{2}-?\d{2}$/.test(body.model.slice(expected.length + 1))))) {
   return fail(provider, 'MODEL_MISMATCH', 'API応答のモデルをGPT-6 Lunaとして確認できません。別モデルの結果は採用しません。');
  }
  return body.model;
 }
-function safeRequestId(value: unknown, key: string): string | null {
+export function safeRequestId(value: unknown, key: string): string | null {
  return typeof value === 'string' && /^[A-Za-z0-9._:-]{1,160}$/.test(value) && !value.includes(key) ? value : null;
 }
 
@@ -219,25 +219,23 @@ export function validateProviderKey(provider: Provider, key: string): string | n
  return null;
 }
 
-export async function inferLunaProvider(
- provider: Provider, key: string, image: HTMLCanvasElement, board: Board,
- progress: (message: string) => void, signal?: AbortSignal,
-): Promise<InferenceResult> {
+/** Exact provider/key/catalog checks shared with opt-in candidate review. No image is sent. */
+export async function validateProviderAvailability(
+ provider: Provider, key: string, progress: (message: string) => void = () => {}, signal?: AbortSignal,
+): Promise<void> {
  checkAbort(signal);
  const keyError = validateProviderKey(provider, key);
  if (keyError) throw Error(keyError);
  const settings = PROVIDERS[provider];
- const token = key.trim();
- if (!Number.isFinite(board.width) || !Number.isFinite(board.height) || board.width <= 0 || board.height <= 0) throw Error('基準寸法は正の有限値にしてください。');
- const auth = { Authorization: `Bearer ${token}` };
+ const auth = { Authorization: `Bearer ${key.trim()}` };
  if (provider === 'openrouter') {
   progress('OpenRouterのAPIキーを確認中…');
-  const authentication = await request(provider, 'authentication', { method: 'GET', headers: auth }, signal);
+  const authentication = await providerRequest(provider, 'authentication', { method: 'GET', headers: auth }, signal);
   if (!record(authentication.body) || !record(authentication.body.data)) throw new ProviderError(provider, 'authentication', authentication.response.status, 'INVALID_AUTH_RESPONSE', 'OpenRouterのキー確認応答の形式を確認できません。送信を停止しました。');
  }
  checkAbort(signal);
  progress(`${settings.name}のGPT-6 Luna提供状況を確認中…`);
- const availability = await request(provider, 'availability', { method: 'GET', headers: provider === 'openai' ? auth : { Accept: 'application/json' } }, signal);
+ const availability = await providerRequest(provider, 'availability', { method: 'GET', headers: provider === 'openai' ? auth : { Accept: 'application/json' } }, signal);
  if (provider === 'openrouter') {
   const body = availability.body;
   if (!record(body) || !Array.isArray(body.data)) throw new ProviderError(provider, 'availability', availability.response.status, 'INVALID_MODEL_CATALOG', 'OpenRouterのモデル一覧を確認できません。送信を停止しました。');
@@ -251,6 +249,21 @@ export async function inferLunaProvider(
  } else if (!record(availability.body) || availability.body.id !== settings.model) {
   throw new ProviderError(provider, 'availability', availability.response.status, 'MODEL_UNAVAILABLE', 'OpenAIのgpt-6-lunaへのアクセスを確認できません。別モデルへの自動切替はありません。');
  }
+
+}
+
+export async function inferLunaProvider(
+ provider: Provider, key: string, image: HTMLCanvasElement, board: Board,
+ progress: (message: string) => void, signal?: AbortSignal,
+): Promise<InferenceResult> {
+ checkAbort(signal);
+ const keyError = validateProviderKey(provider, key);
+ if (keyError) throw Error(keyError);
+ const settings = PROVIDERS[provider];
+ const token = key.trim();
+ if (!Number.isFinite(board.width) || !Number.isFinite(board.height) || board.width <= 0 || board.height <= 0) throw Error('基準寸法は正の有限値にしてください。');
+ const auth = { Authorization: `Bearer ${token}` };
+ await validateProviderAvailability(provider, token, progress, signal);
  checkAbort(signal);
  progress(`方眼付き写真を${settings.name}に送り、実際の推論を実行中…`);
  checkAbort(signal);
@@ -267,12 +280,12 @@ export async function inferLunaProvider(
   response_format: { type: 'json_schema', json_schema: schema },
   provider: { require_parameters: true },
  };
- const { response, body } = await request(provider, 'inference', { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, signal);
+ const { response, body } = await providerRequest(provider, 'inference', { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, signal);
  checkAbort(signal);
  if (!record(body)) return fail(provider, 'INVALID_RESPONSE', 'API応答の形式が不正です。', response.status);
  try {
-  const model = reportedModel(body, provider);
-  const geometry = geometryFromText(outputText(body, provider), provider, board);
+  const model = providerReportedModel(body, provider);
+  const geometry = geometryFromText(providerOutputText(body, provider), provider, board);
   checkAbort(signal);
   return { geometry, model, requestId: safeRequestId(response.headers.get('x-request-id'), token) ?? safeRequestId(body.id, token), provider };
  } catch (error) {

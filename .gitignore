@@ -15,3 +15,7 @@ public/samples/*.png
 public/samples/*.jpg
 public/print/*.png
 .venv/
+
+# Separate container browser evidence
+test-results-container/
+playwright-report-container/

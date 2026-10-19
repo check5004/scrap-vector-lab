@@ -1,4 +1,10 @@
 import "./style.css";
+import "./auto-tune.css";
+import { APP_BUILD, APP_VERSION } from "./build-info";
+import { tuningPanelHtml, candidateOverlay, reviewPhotograph } from "./tuning-ui";
+import { mergeSearchResults } from "./tuning-state";
+import { searchMaskCandidates, candidateSearchDiagnostics, type Candidate, type SearchResult } from "./auto-tune";
+import { reviewCandidates, runReviewLoop, type ReviewCandidate, type ReviewAttempt, type CandidateReview } from "./candidate-review";
 import { MeasurementJourney } from "./journey";
 import {
   type Geometry,
@@ -51,7 +57,7 @@ type Mode = "A" | "B" | "C";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const base = import.meta.env.BASE_URL;
-const html = `<div id="progress" class="progressbar hidden"></div><header class="top"><div class="brand"><div class="logo">⌑</div><div><strong>端材ラボ</strong><small>SCRAP VECTOR LAB / 0.2</small></div></div><div class="topnote">写真から、ものづくりの次の一枚へ。</div><span class="pill">EXPERIMENTAL · PoC</span></header><section class="intro"><div><div class="eyebrow">PHOTO → PLANE → VECTOR</div><h1>端材のかたちを、寸法に。</h1><p>4つのマーカーで平面補正。AIで輪郭を抽出し、指先で仕上げる。</p></div><div class="flow"><span><b>01</b>撮影</span><span><b>02</b>AI抽出</span><span><b>03</b>編集・書き出し</span></div></section><main class="layout"><aside class="panel sidebar"><section class="section"><h2 class="sectiontitle">01　写真を用意<span>INPUT</span></h2><input id="file" type="file" accept="image/*" aria-label="写真ライブラリ・ファイルから選ぶ" class="hidden"><input id="cameraFile" type="file" accept="image/*" capture="environment" aria-label="カメラで撮影" class="hidden"><div class="stack"><button id="upload" type="button" class="full primary" aria-controls="file">＋ 写真ライブラリ・ファイルから選ぶ</button><button id="camera" type="button" class="full" aria-controls="cameraFile">カメラで撮影</button></div><p class="hint">ID 0〜3をすべて写してください。<br>写真はMode Bでは端末内だけで処理。</p><p class="sample-label">AI画像で生成した鋼材の質感</p><div class="samples"><button class="sample ai-sample" data-sample="ai-l-shape">AI · L字型</button><button class="sample ai-sample" data-sample="ai-notched">AI · 凹型</button><button class="sample ai-sample" data-sample="ai-trapezoid-hole">AI · 台形＋穴</button></div><p class="sample-origin">AIで生成した鋼材の質感を、寸法が既知の形状・台紙に合成。マーカーは正規のコードです。実物を撮影した写真ではありません。</p><p class="sample-label">従来の合成写真 · 比較用</p><div class="samples"><button class="sample" data-sample="l-shape"><svg viewBox="0 0 30 23"><path d="M2 2H28V10H15V22H2Z"/></svg>L字型</button><button class="sample" data-sample="notched"><svg viewBox="0 0 30 23"><path d="M2 2H10V12H20V2H28V22H2Z"/></svg>凹型</button><button class="sample" data-sample="trapezoid-hole"><svg viewBox="0 0 30 23"><path fill-rule="evenodd" d="M8 2H23L29 22H1ZM20 12a5 5 0 1 0 -10 0a5 5 0 1 0 10 0"/></svg>台形＋穴</button></div></section><section class="section"><h2 class="sectiontitle">02　基準スケール<span>CALIBRATION</span></h2><label class="field">規定の内側角の間隔<select id="preset"><option value="a4">A4用紙 · 250 × 170 mm</option><option value="medium">中型台 · 500 × 500 mm</option><option value="large">大型台 · 1000 × 1000 mm</option><option value="custom">カスタム寸法</option></select></label><div id="custom" class="row hidden"><label class="field">横 mm<input id="width" type="number" value="2000" min="10" max="10000"></label><label class="field">縦 mm<input id="height" type="number" value="1000" min="10" max="10000"></label></div><button id="rectify" class="full">マーカー検出・平面補正</button><p id="scale" class="hint">2500 × 1700 px · 0.100 mm/px</p><div class="row" style="margin-top:12px"><a class="hint" href="${base}print/a4-marker-sheet.svg" download>A4台紙 SVG ↗</a><a class="hint" href="${base}print/a4-marker-sheet.png" download>PNG ↗</a><button id="print" style="padding:5px 8px;min-height:30px;font-size:10px">印刷</button></div><p class="hint">A4横・100% / 実際のサイズで印刷。<br>100 mmの目盛りを定規で実測してください。<br>切り離したマーカーも台紙と同じ向きに配置。</p></section><section class="section advanced"><h2 class="sectiontitle">03　AIでベクター化<span>INFERENCE</span></h2><button id="runB" class="full primary" disabled>B · 端末内AIで輪郭を抽出</button><p class="hint">U²-NetP / ONNX · 実推論 · API費用なし<br>320 × 320のAIマスクをミリ座標へ変換</p><p class="warn">既知の制限: 従来の穴サンプルでは、直径40 mmの穴を見落とします。Cで穴を描いて修正できます。</p><label class="field" style="margin-top:15px">直線化の許容差 ε <b id="epsilonValue">1.0 mm</b><input id="epsilon" type="range" min="0.5" max="10" step="0.1" value="1"></label><details><summary>マスクの閾値を調整</summary><label class="field">前景確率 <b id="thresholdValue">0.50</b><input id="threshold" type="range" min="0.1" max="0.9" step="0.01" value="0.5"></label></details><details style="margin-top:18px"><summary>A · GPT-6 Lunaで輪郭を推論 <span class="badge">外部API</span></summary><label class="field" style="margin-top:12px">API接続先<select id="provider"><option value="openrouter" selected>OpenRouter（OpenRouterのキー）</option><option value="openai">OpenAI直接（OpenAIのキー）</option></select></label><p id="providerTarget" class="provider-target"></p><label class="field"><span id="apiKeyLabel">OpenRouter APIキー（このブラウザに保存）</span><input id="apiKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" aria-describedby="keyStorageHelp keyStorageStatus"></label><p id="keyStorageStatus" class="provider-note" role="status" aria-live="polite"></p><p id="keyStorageHelp" class="hint">入力したキーは接続先ごとに、この端末・ブラウザのlocalStorageへ自動保存され、リロード後も復元されます。共有端末では使わず、利用後は削除してください。暗号化保存ではなく、同じサイト（ホスト名）のページや拡張機能から読まれる可能性があります。別の端末・ブラウザには同期しません。プライベートモードやサイトデータ削除では失われる場合があります。保存だけではAPIに送信しません。</p><p id="keyValidation" class="provider-note" role="status"></p><button id="clearKey" class="full">この接続先の保存キーを削除</button><label class="field" style="margin-top:12px">画像の方眼間隔<select id="gridstep"><option value="10">10 mm</option><option value="25">25 mm</option><option value="50">50 mm</option><option value="100">100 mm</option></select></label><label class="confirm"><input id="consent" type="checkbox"><span id="consentText"></span></label><button id="runA" class="full" disabled>A · GPT-6 Lunaで推論</button><p class="hint">ブラウザでのキー入力は信頼する端末・このPoC限定でご利用ください。本番運用ではサーバー経由を推奨。キーなしでは実行しません。接続先ごとのキーが必要です。接続先変更時は、その接続先の保存キーだけを復元し、送信の確認を解除します。実行時に提供状況を確認。失敗時の代替推論・架空結果はありません。</p></details></section></aside><section class="workspace"><section id="journey-root" class="panel" aria-label="写真から寸法までの連続表示"></section><div class="panel editor-panel"><div class="editor-disclosure"><div><b>編集・比較</b><span>A / B / C · 実寸の確認</span></div><button id="toggleEditor" aria-expanded="false" aria-controls="editorSurface">計測キャンバスを開く</button></div><div id="editorSurface" class="hidden"><div class="canvashead"><div class="legend"><b>MEASUREMENT CANVAS</b><label><input type="checkbox" id="showA" checked><i class="dot a"></i>A</label><label><input type="checkbox" id="showB" checked><i class="dot b"></i>B</label><label><input type="checkbox" id="showC" checked><i class="dot c"></i>C</label></div><select id="view" aria-label="背景表示"><option value="rectified">補正後</option><option value="photo">撮影画像</option><option value="mask">AIマスク</option><option value="grid">方眼</option></select></div><div class="canvaswrap"><svg id="editor" viewBox="0 0 250 170" role="img" aria-label="端材の輪郭と編集可能な頂点"></svg></div><div class="canvasfooter"><span id="sourceLabel">SAMPLE / 合成写真を読み込み中</span><span id="markerLabel">MARKERS —</span></div></div><div class="editbar"><button id="editC" disabled>Cへコピーして編集</button><button id="undo" disabled>↶ 戻す</button><button id="delete" disabled>頂点を削除</button><button id="snap" disabled>直角に整列 ±5°</button><button id="drawHole" disabled>＋ 穴を描く</button><button id="drawOuter">外周を手描き</button><button id="finishDraw" class="hidden">図形を確定</button><button id="cancelDraw" class="hidden">描画を中止</button><span id="selected" class="selectednum"></span></div></div><div id="status" role="status" aria-live="polite" class="status">合成写真を読み込み中…</div><p class="hint"><a href="#debugPanel">マーカー認識・処理途中の画像を見る ↓</a></p><p class="hint">Cモード: ピンをドラッグ、辺をタップして頂点追加。ピンを選んで削除、またはダブルタップ。輪郭が交差する編集は確定できません。</p><section id="debugPanel" class="panel debug-panel"></section><div class="panel compare"><h2>検証ベンチ <span class="hint">/ 合成写真の既知寸法との比較</span></h2><div id="benchmark" class="benchgrid"></div><p class="hint">正解は評価だけに使用し、AIの入力・予測には使用しません。曲線は多角形近似。誤差はこの合成画像での結果で、実物の精度保証ではありません。</p></div></section><aside class="panel results"><section class="section"><h2 class="sectiontitle">計測結果<span>MM UNITS</span></h2><div class="tabs"><button data-mode="A">A · LLM</button><button data-mode="B" class="active">B · AI</button><button data-mode="C">C · 編集</button></div><p class="hint" style="margin-top:18px">正味面積（外周 − 穴）</p><div class="summaryvalue"><span id="area">—</span><small>mm²</small></div><div class="submetric"><span>外周の頂点</span><b id="vertices">—</b></div><div class="submetric"><span>検出した穴</span><b id="holes">—</b></div><div class="submetric"><span>外周長</span><b id="perimeter">— mm</b></div><div id="warnings"></div></section><section class="section"><h2 class="sectiontitle">各辺の寸法<span>LENGTH / ANGLE</span></h2><div id="edges" class="edge-list"><p class="hint">AI抽出後に表示されます。</p></div></section><section class="section exports"><h2 class="sectiontitle">実寸で書き出す<span>EXPORT 1:1</span></h2><div class="stack"><button id="exportSvg" disabled>SVG　↗</button><button id="exportDxf" disabled>DXF　↗</button><button id="exportJson" disabled>JSON　↗</button></div><p class="hint">現在選択中のモードを出力。<br>SVG: mm + 寸法レイヤー<br>DXF: mm / 閉じたLWPOLYLINE</p><a class="hint" href="https://github.com/check5004/scrap-vector-lab" target="_blank" rel="noopener">ソース・検証手順 ↗</a></section></aside></main><footer class="footer"><p>検証用ツールです。0.1 mm/pxは画像の刻み幅であり、計測精度ではありません。厚み・反り・カメラのレンズ歪み・斜め撮影・印刷倍率で誤差が生じます。マーカーと測定面を同じ平面にし、重要な寸法は必ず実測してください。AIは穴や細部を見落とすことがあります。</p><span>DICT_4X4_50<br>0 TL · 1 TR · 2 BR · 3 BL</span></footer>`;
+const html = `<div id="progress" class="progressbar hidden"></div><header class="top"><div class="brand"><div class="logo">⌑</div><div><strong>端材ラボ</strong><small>SCRAP VECTOR LAB · BETA / <span id="appVersion">${APP_VERSION}</span></small></div></div><div class="topnote">写真から、ものづくりの次の一枚へ。</div><span class="pill">BETA · 自動調整</span></header><p class="beta-notice">自動調整ベータ · 本番とは別の配信です。<a href="https://check5004.github.io/scrap-vector-lab/" target="_blank" rel="noopener">通常版を開く ↗</a></p><section class="intro"><div><div class="eyebrow">PHOTO → PLANE → VECTOR</div><h1>端材のかたちを、寸法に。</h1><p>4つのマーカーで平面補正。AIで輪郭を抽出し、指先で仕上げる。</p></div><div class="flow"><span><b>01</b>撮影</span><span><b>02</b>AI抽出</span><span><b>03</b>編集・書き出し</span></div></section><main class="layout"><aside class="panel sidebar"><section class="section"><h2 class="sectiontitle">01　写真を用意<span>INPUT</span></h2><input id="file" type="file" accept="image/*" aria-label="写真ライブラリ・ファイルから選ぶ" class="hidden"><input id="cameraFile" type="file" accept="image/*" capture="environment" aria-label="カメラで撮影" class="hidden"><div class="stack"><button id="upload" type="button" class="full primary" aria-controls="file">＋ 写真ライブラリ・ファイルから選ぶ</button><button id="camera" type="button" class="full" aria-controls="cameraFile">カメラで撮影</button></div><p class="hint">ID 0〜3をすべて写してください。<br>写真はMode Bでは端末内だけで処理。</p><p class="sample-label">AI画像で生成した鋼材の質感</p><div class="samples"><button class="sample ai-sample" data-sample="ai-l-shape">AI · L字型</button><button class="sample ai-sample" data-sample="ai-notched">AI · 凹型</button><button class="sample ai-sample" data-sample="ai-trapezoid-hole">AI · 台形＋穴</button></div><p class="sample-origin">AIで生成した鋼材の質感を、寸法が既知の形状・台紙に合成。マーカーは正規のコードです。実物を撮影した写真ではありません。</p><p class="sample-label">従来の合成写真 · 比較用</p><div class="samples"><button class="sample" data-sample="l-shape"><svg viewBox="0 0 30 23"><path d="M2 2H28V10H15V22H2Z"/></svg>L字型</button><button class="sample" data-sample="notched"><svg viewBox="0 0 30 23"><path d="M2 2H10V12H20V2H28V22H2Z"/></svg>凹型</button><button class="sample" data-sample="trapezoid-hole"><svg viewBox="0 0 30 23"><path fill-rule="evenodd" d="M8 2H23L29 22H1ZM20 12a5 5 0 1 0 -10 0a5 5 0 1 0 10 0"/></svg>台形＋穴</button></div></section><section class="section"><h2 class="sectiontitle">02　基準スケール<span>CALIBRATION</span></h2><label class="field">規定の内側角の間隔<select id="preset"><option value="a4">A4用紙 · 250 × 170 mm</option><option value="medium">中型台 · 500 × 500 mm</option><option value="large">大型台 · 1000 × 1000 mm</option><option value="custom">カスタム寸法</option></select></label><div id="custom" class="row hidden"><label class="field">横 mm<input id="width" type="number" value="2000" min="10" max="10000"></label><label class="field">縦 mm<input id="height" type="number" value="1000" min="10" max="10000"></label></div><button id="rectify" class="full">マーカー検出・平面補正</button><p id="scale" class="hint">2500 × 1700 px · 0.100 mm/px</p><div class="row" style="margin-top:12px"><a class="hint" href="${base}print/a4-marker-sheet.svg" download>A4台紙 SVG ↗</a><a class="hint" href="${base}print/a4-marker-sheet.png" download>PNG ↗</a><button id="print" style="padding:5px 8px;min-height:30px;font-size:10px">印刷</button></div><p class="hint">A4横・100% / 実際のサイズで印刷。<br>100 mmの目盛りを定規で実測してください。<br>切り離したマーカーも台紙と同じ向きに配置。</p></section><section class="section advanced"><h2 class="sectiontitle">03　AIでベクター化<span>INFERENCE</span></h2><button id="runB" class="full primary" disabled>B · 端末内AIで輪郭を抽出</button><p class="hint">U²-NetP / ONNX · 実推論 · API費用なし<br>320 × 320のAIマスクをミリ座標へ変換</p><p class="warn">既知の制限: 従来の穴サンプルでは、直径40 mmの穴を見落とします。Cで穴を描いて修正できます。</p><label class="field" style="margin-top:15px">直線化の許容差 ε <b id="epsilonValue">1.0 mm</b><input id="epsilon" type="range" min="0.5" max="10" step="0.001" value="1"></label><details><summary>マスクの閾値を調整</summary><label class="field">前景確率 <b id="thresholdValue">0.50</b><input id="threshold" type="range" min="0.1" max="0.9" step="0.001" value="0.5"></label></details><details style="margin-top:18px"><summary>A · GPT-6 Lunaで輪郭を推論 <span class="badge">外部API</span></summary><label class="field" style="margin-top:12px">API接続先<select id="provider"><option value="openrouter" selected>OpenRouter（OpenRouterのキー）</option><option value="openai">OpenAI直接（OpenAIのキー）</option></select></label><p id="providerTarget" class="provider-target"></p><label class="field"><span id="apiKeyLabel">OpenRouter APIキー（このブラウザに保存）</span><input id="apiKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" aria-describedby="keyStorageHelp keyStorageStatus"></label><p id="keyStorageStatus" class="provider-note" role="status" aria-live="polite"></p><p id="keyStorageHelp" class="hint">ベータ専用の保存名を使い、本番の保存キーは読込・移行・削除しません。同じホスト名のため完全なセキュリティ隔離ではありません。入力したキーは接続先ごとに、この端末・ブラウザのlocalStorageへ自動保存され、リロード後も復元されます。共有端末では使わず、利用後は削除してください。暗号化保存ではなく、同じサイト（ホスト名）のページや拡張機能から読まれる可能性があります。別の端末・ブラウザには同期しません。プライベートモードやサイトデータ削除では失われる場合があります。保存だけではAPIに送信しません。</p><p id="keyValidation" class="provider-note" role="status"></p><button id="clearKey" class="full">この接続先の保存キーを削除</button><label class="field" style="margin-top:12px">画像の方眼間隔<select id="gridstep"><option value="10">10 mm</option><option value="25">25 mm</option><option value="50">50 mm</option><option value="100">100 mm</option></select></label><label class="confirm"><input id="consent" type="checkbox"><span id="consentText"></span></label><button id="runA" class="full" disabled>A · GPT-6 Lunaで推論</button><p class="hint">ブラウザでのキー入力は信頼する端末・このPoC限定でご利用ください。本番運用ではサーバー経由を推奨。キーなしでは実行しません。接続先ごとのキーが必要です。接続先変更時は、その接続先の保存キーだけを復元し、送信の確認を解除します。実行時に提供状況を確認。失敗時の代替推論・架空結果はありません。</p></details></section></aside><section class="workspace"><section id="journey-root" class="panel" aria-label="写真から寸法までの連続表示"></section>${tuningPanelHtml}<div class="panel editor-panel"><div class="editor-disclosure"><div><b>編集・比較</b><span>A / B / C · 実寸の確認</span></div><button id="toggleEditor" aria-expanded="false" aria-controls="editorSurface">計測キャンバスを開く</button></div><div id="editorSurface" class="hidden"><div class="canvashead"><div class="legend"><b>MEASUREMENT CANVAS</b><label><input type="checkbox" id="showA" checked><i class="dot a"></i>A</label><label><input type="checkbox" id="showB" checked><i class="dot b"></i>B</label><label><input type="checkbox" id="showC" checked><i class="dot c"></i>C</label></div><select id="view" aria-label="背景表示"><option value="rectified">補正後</option><option value="photo">撮影画像</option><option value="mask">AIマスク</option><option value="grid">方眼</option></select></div><div class="canvaswrap"><svg id="editor" viewBox="0 0 250 170" role="img" aria-label="端材の輪郭と編集可能な頂点"></svg></div><div class="canvasfooter"><span id="sourceLabel">SAMPLE / 合成写真を読み込み中</span><span id="markerLabel">MARKERS —</span></div></div><div class="editbar"><button id="editC" disabled>Cへコピーして編集</button><button id="undo" disabled>↶ 戻す</button><button id="delete" disabled>頂点を削除</button><button id="snap" disabled>直角に整列 ±5°</button><button id="drawHole" disabled>＋ 穴を描く</button><button id="drawOuter">外周を手描き</button><button id="finishDraw" class="hidden">図形を確定</button><button id="cancelDraw" class="hidden">描画を中止</button><span id="selected" class="selectednum"></span></div></div><div id="status" role="status" aria-live="polite" class="status">合成写真を読み込み中…</div><p class="hint"><a href="#debugPanel">マーカー認識・処理途中の画像を見る ↓</a></p><p class="hint">Cモード: ピンをドラッグ、辺をタップして頂点追加。ピンを選んで削除、またはダブルタップ。輪郭が交差する編集は確定できません。</p><section id="debugPanel" class="panel debug-panel"></section><div class="panel compare"><h2>検証ベンチ <span class="hint">/ 合成写真の既知寸法との比較</span></h2><div id="benchmark" class="benchgrid"></div><p class="hint">正解は評価だけに使用し、AIの入力・予測には使用しません。曲線は多角形近似。誤差はこの合成画像での結果で、実物の精度保証ではありません。</p></div></section><aside class="panel results"><section class="section"><h2 class="sectiontitle">計測結果<span>MM UNITS</span></h2><div class="tabs"><button data-mode="A">A · LLM</button><button data-mode="B" class="active">B · AI</button><button data-mode="C">C · 編集</button></div><p class="hint" style="margin-top:18px">正味面積（外周 − 穴）</p><div class="summaryvalue"><span id="area">—</span><small>mm²</small></div><div class="submetric"><span>外周の頂点</span><b id="vertices">—</b></div><div class="submetric"><span>検出した穴</span><b id="holes">—</b></div><div class="submetric"><span>外周長</span><b id="perimeter">— mm</b></div><div id="warnings"></div></section><section class="section"><h2 class="sectiontitle">各辺の寸法<span>LENGTH / ANGLE</span></h2><div id="edges" class="edge-list"><p class="hint">AI抽出後に表示されます。</p></div></section><section class="section exports"><h2 class="sectiontitle">実寸で書き出す<span>EXPORT 1:1</span></h2><div class="stack"><button id="exportSvg" disabled>SVG　↗</button><button id="exportDxf" disabled>DXF　↗</button><button id="exportJson" disabled>JSON　↗</button></div><p class="hint">現在選択中のモードを出力。<br>SVG: mm + 寸法レイヤー<br>DXF: mm / 閉じたLWPOLYLINE</p><a class="hint" href="https://github.com/check5004/scrap-vector-lab/tree/${APP_BUILD.source_commit === 'local' ? 'beta/auto-threshold-20261019' : APP_BUILD.source_commit}" target="_blank" rel="noopener">ソース・検証手順 ↗</a></section></aside></main><footer class="footer"><p>検証用ツールです。0.1 mm/pxは画像の刻み幅であり、計測精度ではありません。厚み・反り・カメラのレンズ歪み・斜め撮影・印刷倍率で誤差が生じます。マーカーと測定面を同じ平面にし、重要な寸法は必ず実測してください。AIは穴や細部を見落とすことがあります。</p><span>DICT_4X4_50<br>0 TL · 1 TR · 2 BR · 3 BL</span></footer>`;
 $("app").innerHTML = html;
 let board: Board = { ...PRESETS.a4 },
   source: HTMLCanvasElement | undefined,
@@ -72,6 +78,14 @@ let active: Mode = "B",
 const geometries: Partial<Record<Mode, Geometry>> = {},
   provenance: Partial<Record<Mode, Record<string, unknown>>> = {},
   warnings: Partial<Record<Mode, string[]>> = {};
+let tuneEpoch = 0;
+let tuneResult: SearchResult | undefined;
+let tuneSelectedId: string | undefined;
+let tuneReview: Record<string, unknown> | undefined;
+let tuneRunActive = false;
+let pipelineFinishMessage: string | undefined;
+let tuneOriginal: { geometry:Geometry; provenance:Record<string,unknown>|undefined; warnings:string[]|undefined; threshold:number; epsilon:number } | undefined;
+const tuneImages = new Map<string,string>();
 let undo: Geometry[] = [];
 let selected: { ring: number; index: number } | undefined;
 let dragging:
@@ -143,6 +157,7 @@ function showKeyStorageStatus(result: KeyStorageStatus) {
   $("keyStorageStatus").classList.toggle("warn", ["unavailable", "save-failed", "clear-failed", "invalid-cleared"].includes(result));
 }
 function restoreProviderKey() {
+  $<HTMLInputElement>("reviewConsent").checked = false;
   const result = keyStore.load(provider());
   $<HTMLInputElement>("apiKey").value = result.key;
   $<HTMLInputElement>("consent").checked = false;
@@ -166,6 +181,8 @@ function updateProviderUI() {
   const selected = provider(),
     settings = PROVIDERS[selected];
   $("providerTarget").textContent = `${settings.model} → ${settings.endpoint}`;
+  $("reviewTarget").textContent = `${settings.name} · ${settings.model}`;
+  $("reviewConsentText").textContent = `補正画像と候補画像を${settings.name}${selected === "openrouter" ? "およびその推論提供先" : ""}へ送り、上限回数内で有料の評価・再調整を実行することを確認しました。`;
   $("apiKeyLabel").textContent =
     `${settings.name} APIキー（このブラウザに保存）`;
   $<HTMLInputElement>("apiKey").placeholder =
@@ -214,6 +231,14 @@ function setBusy(v: boolean) {
     $<HTMLInputElement>(id).disabled = v;
 }
 function updateButtons() {
+  $<HTMLButtonElement>("tuneRestore").disabled = busy || !!drawing || !!dragging || !tuneOriginal;
+  $<HTMLButtonElement>("autoTune").disabled = busy || !flat || !!drawing || !!dragging;
+  $<HTMLButtonElement>("tuneStop").disabled = !busy || !tuneRunActive;
+  $<HTMLButtonElement>("reviewRun").disabled = busy || !!drawing || !!dragging || !tuneResult?.candidates.length ||
+    !!validateProviderKey(provider(), $<HTMLInputElement>("apiKey").value) || !$<HTMLInputElement>("reviewConsent").checked;
+  $<HTMLSelectElement>("reviewMaxCalls").disabled = busy;
+  $<HTMLInputElement>("autoRecover").disabled = busy;
+  document.querySelectorAll<HTMLButtonElement>("[data-apply-candidate]").forEach(button=>button.disabled=busy || !!drawing || !!dragging);
   for (const id of ["runB", "drawOuter"])
     $<HTMLButtonElement>(id).disabled = busy || !flat;
   $<HTMLButtonElement>("runA").disabled =
@@ -238,6 +263,7 @@ function updateButtons() {
   $("cancelDraw").classList.toggle("hidden", !drawing);
 }
 function resetResults() {
+  resetTuning();
   for (const m of ["A", "B", "C"] as Mode[]) {
     delete geometries[m];
     delete provenance[m];
@@ -485,11 +511,13 @@ function makeGridStage(input: HTMLCanvasElement) {
 async function guarded(fn: () => Promise<void>) {
   if (busy) return;
   pipelineAbort = new AbortController();
+  pipelineFinishMessage = undefined;
   setBusy(true);
   debug.start();
   try {
     await fn();
-    journey.setProcessing("処理完了 · 説明再生とは別の実処理です", "complete", journeyToken);
+    pipelineAbort.signal.throwIfAborted();
+    journey.setProcessing(pipelineFinishMessage ?? "処理完了 · 説明再生とは別の実処理です", "complete", journeyToken);
   } catch (e) {
     const aborted =
       pipelineAbort.signal.aborted ||
@@ -585,6 +613,8 @@ function* vectorStages(): Generator<DebugStage, VectorResult> {
   if (!mask || !flat) throw Error("AIマスクがありません。");
   const threshold = Number($<HTMLInputElement>("threshold").value),
     epsilon = Number($<HTMLInputElement>("epsilon").value);
+  const foregroundCount = mask.probabilities.reduce((n,p)=>n+Number(p>=threshold),0);
+  if (!foregroundCount || foregroundCount === mask.probabilities.length) throw Error("前景が空または全面です。閾値を変更するか自動調整を試してください。");
   const binaryStarted = performance.now(),
     binaryImage = maskDebugImage(mask, threshold),
     binaryElapsed = performance.now() - binaryStarted;
@@ -651,6 +681,8 @@ function commitVector(result: VectorResult) {
   };
 }
 function revectorize() {
+  resetTuning();
+  if(provenance.B) delete provenance.B.automatic_adjustment;
   if (!mask) return;
   journey.clearAnalysis(journeyToken);
   journey.setMask(mask, Number($<HTMLInputElement>("threshold").value), journeyToken);
@@ -673,7 +705,8 @@ function revectorize() {
   }
   render();
 }
-async function runModeB() {
+async function runModeB(vectorize = true) {
+  resetTuning();
   if (!flat) throw Error("平面補正が必要です。");
   if (journeyToken === undefined && source && journeyMarkerReport) {
     journeyToken = journey.begin(source, board);
@@ -722,6 +755,7 @@ async function runModeB() {
       },
       pipelineAbort?.signal,
     );
+    if (!vectorize) return;
     const stages = vectorStages();
     let next = stages.next();
     while (!next.done) {
@@ -745,9 +779,182 @@ async function runModeB() {
       delete provenance.B;
       delete warnings.B;
     }
+    if (!pipelineAbort?.signal.aborted && mask && vectorize && $<HTMLInputElement>("autoRecover").checked) {
+      await runAutomaticSearch("現在の閾値・εで輪郭を作れないため復旧候補を探索", false);
+      return;
+    }
     throw error;
   }
 }
+
+function resetTuning() {
+  tuneEpoch++;
+  tuneResult = undefined; tuneSelectedId = undefined; tuneReview = undefined; tuneImages.clear(); tuneOriginal=undefined;
+  $("tuneBefore").classList.add("hidden");
+  $<HTMLImageElement>("tuneBeforeImage").removeAttribute("src");
+  $("tuneBeforeMetrics").textContent="";
+  debug.remove(["tuning"]);
+  $("tuneCandidates").replaceChildren();
+  $("tuneStatus").textContent = "未実行。前景閾値 0.10〜0.90 / εは現在値以下を探索します。";
+  $("tuneDetails").textContent = "未実行";
+  $("reviewStatus").textContent = "LLM評価は未実行です。";
+  $("reviewUsage").textContent = "API呼出し0回。各回の出力上限1,200トークン。料金上限の保証ではありません。";
+  $<HTMLInputElement>("reviewConsent").checked = false;
+}
+function recordTuning() {
+  const details = { app_build: APP_BUILD, local: tuneResult ? candidateSearchDiagnostics(tuneResult) : null, llm: tuneReview ?? {status:"not_executed"}, selected_candidate_id:tuneSelectedId??null };
+  $("tuneDetails").textContent = JSON.stringify(details,null,2);
+  debug.record({id:"tuning",title:"実マスクの有界探索・任意LLM評価",details});
+}
+function renderTuning() {
+  const root=$("tuneCandidates");root.replaceChildren();
+  if (!flat || !mask || !tuneResult) return;
+  const list=[...tuneResult.candidates];
+  const reviewed=list.find(c=>c.id===tuneReview?.chosen_candidate_id);
+  if(reviewed){list.splice(list.indexOf(reviewed),1);list.unshift(reviewed);}
+  const selected=list.find(c=>c.id===tuneSelectedId);
+  if(selected) {list.splice(list.indexOf(selected),1);list.unshift(selected);}
+  for(const candidate of list.slice(0,6)) {
+    let image=tuneImages.get(candidate.id);
+    if(!image) {image=candidateOverlay(flat,board,mask,candidate.geometry,candidate.threshold);tuneImages.set(candidate.id,image);}
+    const card=document.createElement("article");card.className=`tune-card${candidate.id===tuneSelectedId?" selected":""}`;card.dataset.candidateId=candidate.id;
+    const img=document.createElement("img");img.src=image;img.alt=`閾値${candidate.threshold.toFixed(3)}の実マスクと輪郭`;card.append(img);
+    const body=document.createElement("div");body.className="tune-card-body";
+    const title=document.createElement("strong");title.textContent=`閾値 ${candidate.threshold.toFixed(3)} / ε ${candidate.epsilon.toFixed(2)} mm`;body.append(title);
+    if(candidate.id===tuneReview?.chosen_candidate_id){const label=document.createElement("p");label.textContent=tuneReview?.applied?"LLM評価の選択候補":"LLM評価の選択候補 · 未採用";body.append(label);}
+    const metrics=document.createElement("p");metrics.textContent=`画像との一致は未確認 · ${candidate.grade==="usable"?"数値条件内":"要確認"}\n安定性 ${candidate.metrics.thresholdStability.toFixed(3)} · マスク保持 ${candidate.metrics.regionFidelityIoU.toFixed(3)}\n穴 ${candidate.metrics.simplifiedHoleCount} · 除外領域 ${(candidate.metrics.discardedAreaRatio*100).toFixed(1)}%`;body.append(metrics);
+    if(!candidate.safeToAutoApply){const warning=document.createElement("p");warning.className="warn";warning.textContent="穴・領域の変動などがあり自動採用しません。写真と照合してから選んでください。";body.append(warning);}
+    const button=document.createElement("button");button.dataset.applyCandidate=candidate.id;button.textContent=candidate.id===tuneSelectedId?"採用中":"この候補を採用";button.disabled=busy;button.onclick=()=>{if(!busy)applyTuningCandidate(candidate,"手動選択");};body.append(button);card.append(body);root.append(card);
+  }
+  recordTuning();
+}
+function applyTuningCandidate(candidate:Candidate, reason:string) {
+  if(drawing || dragging || !mask || !flat || !tuneResult) throw Error("現在の画像に適用できる候補がありません。");
+  const canonical=tuneResult.candidates.find(c=>c.id===candidate.id&&c.threshold===candidate.threshold&&c.epsilon===candidate.epsilon);
+  if(!canonical || JSON.stringify(canonical.geometry)!==JSON.stringify(candidate.geometry))throw Error("候補が更新されています。現在の一覧から選び直してください。");
+  candidate=canonical;
+  $<HTMLInputElement>("threshold").value=String(candidate.threshold);
+  $<HTMLInputElement>("epsilon").value=String(candidate.epsilon);
+  if(Number($<HTMLInputElement>("threshold").value)!==candidate.threshold || Number($<HTMLInputElement>("epsilon").value)!==candidate.epsilon) throw Error("候補の設定を正確に反映できません。採用を停止しました。");
+  $("thresholdValue").textContent=candidate.threshold.toFixed(3);
+  $("epsilonValue").textContent=`${candidate.epsilon.toFixed(2)} mm`;
+  journey.clearAnalysis(journeyToken);journey.setMask(mask,candidate.threshold,journeyToken);
+  debug.remove(["binary","contours","polygon"]);
+  const stages=vectorStages();let next=stages.next();
+  while(!next.done){debug.record(next.value);next=stages.next();}
+  commitVector(next.value);
+  warnings.B=[...new Set([...(warnings.B??[]),"自動調整の指標は精度・写真との一致を保証しません。穴と細部を必ず確認してください。",...candidate.warnings])];
+  tuneSelectedId=candidate.id;
+  if(tuneReview) tuneReview={...tuneReview,applied:tuneReview.chosen_candidate_id===candidate.id,adoption:reason==="手動選択"?"manual":"automatic"};
+  provenance.B={...provenance.B,automatic_adjustment:{reason,candidate_id:candidate.id,score:candidate.score,metrics:candidate.metrics,grade:candidate.grade,local_search:tuneResult?candidateSearchDiagnostics(tuneResult):null,llm:!tuneReview?{status:"not_executed"}:tuneReview.chosen_candidate_id===candidate.id?tuneReview:{status:"not_evaluated_for_this_candidate"}}};
+  active="B";renderTuning();render();
+  journey.setProcessing("実マスクの候補を採用しました。写真との一致は要確認です", "complete",journeyToken);
+}
+async function runAutomaticSearch(reason:string, obtainMask=true) {
+  if(drawing||dragging)throw Error("編集中の図形を確定または中止してください。");
+  if(!flat) throw Error("平面補正が必要です。");
+  tuneRunActive=true;updateButtons();
+  try {
+    if(!mask) {if(!obtainMask)throw Error("AIマスクがありません。");await runModeB(false);}
+    if(!mask || !flat) throw Error("AIマスクがありません。");
+    const fixedMask=mask,fixedFlat=flat,fixedBoard=board,epoch=tuneEpoch;
+    tuneReview=undefined;tuneImages.clear();
+    if(geometries.B) {
+      tuneOriginal={geometry:cloneGeometry(geometries.B),provenance:provenance.B?structuredClone(provenance.B):undefined,warnings:warnings.B?[...warnings.B]:undefined,threshold:Number(provenance.B?.mask_threshold??$<HTMLInputElement>("threshold").value),epsilon:Number(provenance.B?.epsilon_mm??$<HTMLInputElement>("epsilon").value)};
+      $<HTMLImageElement>("tuneBeforeImage").src=candidateOverlay(fixedFlat,fixedBoard,fixedMask,tuneOriginal.geometry,tuneOriginal.threshold);
+      $("tuneBeforeMetrics").textContent=`閾値${tuneOriginal.threshold.toFixed(3)} / ε${tuneOriginal.epsilon.toFixed(2)} mm · 面積${fmt(geometryArea(tuneOriginal.geometry))} mm² · 穴${tuneOriginal.geometry.holes.length}`;
+      $("tuneBefore").classList.remove("hidden");
+    }
+    $("reviewStatus").textContent="LLM評価は未実行です。";
+    $("tuneStatus").textContent=reason;
+    const result=await searchMaskCandidates(fixedMask,fixedBoard,{currentThreshold:Number($<HTMLInputElement>("threshold").value),currentEpsilon:Number($<HTMLInputElement>("epsilon").value),signal:pipelineAbort?.signal,onProgress:p=>{
+      $("tuneStatus").textContent=`${reason} · ${p.attempts}/${p.maxCandidates}設定を処理、${p.validCandidates}候補（${(p.elapsedMs/1000).toFixed(1)}秒）`;
+    }});
+    if(epoch!==tuneEpoch||mask!==fixedMask||flat!==fixedFlat||board!==fixedBoard) return;
+    tuneResult=result;
+    const best=result.candidates.find(c=>c.safeToAutoApply);
+    if(result.stoppedReason==="cancelled"||pipelineAbort?.signal.aborted){
+      $("tuneStatus").textContent="探索を中止しました。前の計測結果は変更せず、終了した候補を一覧に残しています。";
+      renderTuning();return;
+    }
+    if(best){applyTuningCandidate(best,"端末内探索");$("tuneStatus").textContent=`${result.attempts.length}設定を比較し、輪郭を取得しました。画像との一致は未確認です（${(result.elapsedMs/1000).toFixed(1)}秒）。最適値や正解の保証はありません。${result.stoppedReason!=="completed"?"探索上限で終了しています。":""}`;}
+    else {$("tuneStatus").textContent=result.candidates.length?"候補はありますが穴・領域などが不安定です。自動採用せず、前の計測結果を保持しました。写真と照合して選択してください。":"探索範囲内で有効候補がありません。前の計測結果を保持しました。撮影・AIマスクを確認してください。";renderTuning();}
+    pipelineFinishMessage=best?"輪郭を取得しました · 写真との一致は未確認です":result.candidates.length?"探索終了 · 曖昧な候補は写真との照合・手動確認が必要です":"探索終了 · 範囲内に有効候補なし。撮影・AIマスクを確認してください";
+    status(pipelineFinishMessage,!best);debug.progress(pipelineFinishMessage);
+    recordTuning();
+  } finally {tuneRunActive=false;updateButtons();}
+}
+function numericMetrics(candidate:Candidate):Record<string,number> {
+  return Object.fromEntries(Object.entries(candidate.metrics).filter(([,value])=>typeof value==="number").slice(0,24)) as Record<string,number>;
+}
+type RenderedReviewCandidate=ReviewCandidate&{local:Candidate};
+function toReviewCandidate(candidate:Candidate):RenderedReviewCandidate {
+  const overlayDataUrl=tuneImages.get(candidate.id)??candidateOverlay(flat!,board,mask!,candidate.geometry,candidate.threshold);
+  tuneImages.set(candidate.id,overlayDataUrl);
+  return {id:candidate.id,threshold:candidate.threshold,epsilon:candidate.epsilon,metrics:numericMetrics(candidate),overlayDataUrl,safe:validateGeometry(candidate.geometry).valid,local:candidate};
+}
+function showReviewAttempts(attempts:ReviewAttempt[]) {
+  const costs=attempts.reduce((sum,a)=>sum+(a.usage.costUsd??0),0),unknown=attempts.filter(a=>a.chargeStatus==="unknown").length;
+  const tokens=attempts.reduce((sum,a)=>sum+(a.usage.totalTokens??0),0),tokenUnknown=attempts.some(a=>a.usage.totalTokens===null);
+  $("reviewUsage").textContent=`API評価試行 ${attempts.length}回（画像送信 ${attempts.filter(a=>a.inferenceSent===true).length}回${attempts.some(a=>a.inferenceSent===null)?"＋不明分":""}） · 報告トークン ${tokens}${tokenUnknown?"＋不明分":""} · 報告料金 $${costs.toFixed(6)}${unknown?` ＋料金不明 ${unknown}回`:""}。送信済み料金は取消できない場合があります。`;
+}
+async function runAutomaticReview() {
+  if(drawing||dragging)throw Error("編集中の図形を確定または中止してください。");
+  if(!flat||!mask||!tuneResult||!$<HTMLInputElement>("reviewConsent").checked)throw Error("候補と画像送信の確認が必要です。");
+  const selectedProvider=provider(), key=$<HTMLInputElement>("apiKey").value, keyError=validateProviderKey(selectedProvider,key);
+  if(keyError)throw Error(keyError);
+  const safe=tuneResult.candidates.find(c=>c.safeToAutoApply)??tuneResult.candidates[0];if(!safe)throw Error("幾何的に有効な候補がありません。");
+  const maxCalls=Number($<HTMLSelectElement>("reviewMaxCalls").value);if(![1,2,3].includes(maxCalls))throw Error("評価上限は1〜3回です。");
+  const fixedMask=mask,fixedFlat=flat,fixedBoard=board,epoch=tuneEpoch;
+  activeRequest=new AbortController();tuneRunActive=true;updateButtons();
+  const signal=AbortSignal.any([activeRequest.signal,pipelineAbort!.signal]);
+  const candidates=tuneResult.candidates.slice(0,4).map(toReviewCandidate),attempts:ReviewAttempt[]=[];
+  tuneReview=undefined;$("reviewStatus").textContent="選択済み接続先で評価を開始します…";showReviewAttempts([]);
+  try {
+    const result=await runReviewLoop({initialCandidates:candidates,localFallback:toReviewCandidate(safe),maxCalls:maxCalls as 1|2|3,signal,
+      evaluate:(batch,attempt,callSignal)=>reviewCandidates({provider:selectedProvider,key,consent:true,photographDataUrl:reviewPhotograph(fixedFlat),candidates:batch,signal:callSignal,progress:message=>{$("reviewStatus").textContent=`${attempt}/${maxCalls}回 · ${message}`;}}),
+      refine:async(review:CandidateReview,current,best)=>{
+        signal.throwIfAborted();
+        const center=best?.local??current[0].local, direction=review.adjustment.threshold_direction;
+        if(direction==="none"&&review.adjustment.epsilon_direction==="none")return[];
+        const thresholds=direction==="none"?[center.threshold]:[0.02,0.04,0.08,0.12].map(delta=>center.threshold+(direction==="higher"?delta:-delta)).filter(t=>t>=0.1&&t<=0.9);
+        const refined=await searchMaskCandidates(fixedMask,fixedBoard,{currentThreshold:center.threshold,currentEpsilon:review.adjustment.epsilon_direction==="lower"?Math.max(0.5,center.epsilon/2):center.epsilon,candidateThresholds:thresholds,maxCandidates:80,signal,onProgress:p=>{$("reviewStatus").textContent=`LLMの方向提案から実マスクを再探索 · ${p.attempts}設定`;}});
+        signal.throwIfAborted();
+        if(epoch!==tuneEpoch||mask!==fixedMask||flat!==fixedFlat||board!==fixedBoard)throw new DOMException("画像が変更されました","AbortError");
+        tuneResult=mergeSearchResults(tuneResult!,refined);
+        const suggested=refined.candidates.filter(c=>(direction==="none"||direction==="higher"&&c.threshold>center.threshold||direction==="lower"&&c.threshold<center.threshold)&&(review.adjustment.epsilon_direction!=="lower"||c.epsilon<center.epsilon));
+        renderTuning();return suggested.slice(0,4).map(toReviewCandidate);
+      },onAttempt:attempt=>{attempts.push(attempt);showReviewAttempts(attempts);}});
+    if(epoch!==tuneEpoch||mask!==fixedMask||flat!==fixedFlat||board!==fixedBoard)return;
+    tuneReview={status:result.evaluated?"evaluated":"not_evaluated",reason:result.reason,provider:selectedProvider,model:PROVIDERS[selectedProvider].model,chosen_candidate_id:result.evaluated?result.candidate.id:null,evaluation:result.evaluation,attempts:result.attempts,reported_cost_usd:result.reportedCostUsd,unknown_cost_attempts:result.unknownCostAttempts};
+    const canonical=tuneResult.candidates.find(c=>c.id===result.candidate.id);
+    let applied=false;
+    if(result.reason!=="cancelled"&&!signal.aborted&&result.evaluated&&canonical?.safeToAutoApply) {applyTuningCandidate(canonical,"LLM評価済み候補（誤判定あり）");applied=true;}
+    tuneReview.applied=applied;
+    const labels:Record<string,string>={accepted:"LLMが妥当と評価した候補で停止",plateau:"評価の改善が停滞したため停止","no-new-candidates":"新しい有効候補がなく停止","max-calls":"呼出し上限で停止",cancelled:"中止しました。前の計測結果を保持",failed:"API評価に失敗。機械候補を保持","model-stop":"LLMの停止判断で終了"};
+    $("reviewStatus").textContent=`${labels[result.reason]}。${result.evaluated&&!applied?"計測結果は変更していません。曖昧な候補は写真を確認して「この候補を採用」を押してください。":""}${result.evaluated?"終了までの最良評価を保持しますが、写真との一致・寸法精度は保証しません。":"LLM評価は未完了です。未評価を成功扱いしません。"}`;
+    pipelineFinishMessage=$("reviewStatus").textContent??"評価終了";status(pipelineFinishMessage);
+    renderTuning();recordTuning();
+  } finally {activeRequest=undefined;tuneRunActive=false;updateButtons();}
+}
+$("tuneRestore").onclick=()=>{
+  if(busy||drawing||dragging||!tuneOriginal)return;
+  const previous=tuneOriginal;
+  geometries.B=cloneGeometry(previous.geometry);provenance.B=previous.provenance;warnings.B=previous.warnings;
+  $<HTMLInputElement>("threshold").value=String(previous.threshold);$<HTMLInputElement>("epsilon").value=String(previous.epsilon);
+  $("thresholdValue").textContent=previous.threshold.toFixed(3);$("epsilonValue").textContent=`${previous.epsilon.toFixed(2)} mm`;
+  tuneSelectedId=undefined;active="B";
+  if(tuneReview)tuneReview={...tuneReview,applied:false,adoption:"restored_previous_result"};
+  if(mask){journey.clearAnalysis(journeyToken);journey.setMask(mask,previous.threshold,journeyToken);journey.setGeometry(traceMask(mask,board,previous.threshold).rawGeometry,previous.geometry,journeyToken);}
+  debug.remove(["binary","contours","polygon"]);
+  $("tuneStatus").textContent="調整前の結果に戻しました。探索候補は比較用に残っています。";renderTuning();render();
+};
+$("autoTune").onclick=()=>void guarded(()=>runAutomaticSearch("閾値・εの候補を探索"));
+$("reviewRun").onclick=()=>void guarded(runAutomaticReview);
+$("tuneStop").onclick=()=>{pipelineAbort?.abort();activeRequest?.abort();};
+$<HTMLInputElement>("reviewConsent").onchange=()=>{activeRequest?.abort();updateButtons();};
+$("reviewKeys").onclick=()=>{const section=$("provider").closest("details")!;section.open=true;section.scrollIntoView({block:"center",behavior:"instant"});};
+
 function editCommit(g: Geometry, message = "編集を反映しました。") {
   journey.stopForEdit();
   const v = validateGeometry(g);
@@ -833,6 +1040,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-sample]").forEach(
     }),
 );
 $<HTMLSelectElement>("preset").onchange = () => {
+  if (busy) return;
   journey.reset();
   journeyToken = undefined;
   const p = $<HTMLSelectElement>("preset").value;
@@ -853,6 +1061,7 @@ $<HTMLSelectElement>("preset").onchange = () => {
 };
 for (const id of ["width", "height"])
   $<HTMLInputElement>(id).onchange = () => {
+    if (busy) return;
     journey.reset();
     journeyToken = undefined;
     flat = undefined;
@@ -892,10 +1101,17 @@ for (const id of ["epsilon", "threshold"])
     $("thresholdValue").textContent = Number(
       $<HTMLInputElement>("threshold").value,
     ).toFixed(2);
+    if (busy) return;
+    const previous = geometries.B ? { geometry: geometries.B, provenance: provenance.B ? structuredClone(provenance.B) : undefined, warnings: warnings.B ? [...warnings.B] : undefined } : undefined;
     revectorize();
+    if (!geometries.B && mask && $<HTMLInputElement>("autoRecover").checked) {
+      if (previous) { geometries.B = previous.geometry; provenance.B = previous.provenance; warnings.B = previous.warnings; }
+      void guarded(async()=>runAutomaticSearch("手動設定のエラーから復旧候補を探索",false));
+    }
   };
 $<HTMLInputElement>("apiKey").oninput = () => {
   activeRequest?.abort();
+  $<HTMLInputElement>("reviewConsent").checked=false;
   $<HTMLInputElement>("consent").checked = false;
   const result = keyStore.save(provider(), $<HTMLInputElement>("apiKey").value);
   if (result.status === "clear-failed") $<HTMLInputElement>("apiKey").value = "";
@@ -909,6 +1125,7 @@ $<HTMLInputElement>("consent").oninput = () => {
 };
 $("clearKey").onclick = () => {
   activeRequest?.abort();
+  $<HTMLInputElement>("reviewConsent").checked = false;
   $<HTMLInputElement>("apiKey").value = "";
   $<HTMLInputElement>("consent").checked = false;
   showKeyStorageStatus(keyStore.clear(provider()).status);
@@ -1224,6 +1441,7 @@ for (const [id, type, ext, fn] of [
       download(
         fn(g, board, board.preset, {
           ...provenance[active],
+          app_build: APP_BUILD,
           scale_mm_per_px: board.width / board.pixelWidth,
           source_image: sampleId || "user-upload",
           scale_y_mm_per_px: board.height / board.pixelHeight,

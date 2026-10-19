@@ -1,3 +1,4 @@
+import { APP_BUILD } from "./build-info";
 /**
  * Geometry lives in calibrated millimetres, with image/SVG coordinates (y down).
  * Rings are implicitly closed: do not repeat the first point at the end.
@@ -164,7 +165,7 @@ export function buildMeasurement(geometry: Geometry, board: BoardSize, preset = 
     holes_vertices_mm: geometry.holes.map((hole, h) => hole.map((p, i) => ({ id: `H${h + 1}V${i + 1}`, x: p.x, y: p.y }))),
     edges_mm: edgeMeasurements(geometry.outer),
     hole_edges_mm: geometry.holes.map((hole, h) => edgeMeasurements(hole, `H${h + 1}V`, `H${h + 1}E`)),
-    total_area_mm2: geometryArea(geometry), provenance: { ...provenance },
+    total_area_mm2: geometryArea(geometry), provenance: { ...provenance, app_build: APP_BUILD },
   };
 }
 
@@ -273,7 +274,7 @@ ${geometry.holes.map(hole => svgDimensions(hole, true)).join('\n')}
 /** AutoCAD R2000 ASCII DXF: closed LWPOLYLINE entities, INSUNITS=4 (mm). */
 export function createDxf(geometry: Geometry, board: BoardSize, _preset = 'custom', _provenance: Provenance = {}): string {
   assertValidGeometry(geometry); assertBoard(board);
-  const fields: (number | string)[] = [];
+  const fields: (number | string)[] = [999, `Scrap Vector Lab ${APP_BUILD.version} source ${APP_BUILD.source_commit}`];
   const add = (...values: (number | string)[]): void => { fields.push(...values); };
   const rings = [geometry.outer, ...geometry.holes];
   // R2000 table heads, records, and entities need unique hexadecimal handles.

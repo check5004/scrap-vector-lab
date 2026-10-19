@@ -12,6 +12,8 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 COPY --from=fixtures /app/public ./public
+ARG SCRAP_SOURCE_COMMIT=local
+ENV SCRAP_SOURCE_COMMIT=$SCRAP_SOURCE_COMMIT
 RUN npm run assets && npm test && npm run build
 
 FROM nginx:1.27-alpine

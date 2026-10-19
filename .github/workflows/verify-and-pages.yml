@@ -1,7 +1,7 @@
-name: Verify and deploy Pages
+name: Verify beta and deploy isolated Pages
 on:
   push:
-    branches: [main]
+    branches: [main, "beta/**"]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -19,6 +19,8 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Verify pinned beta source and version
+        run: node scripts/verify-release.mjs
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -34,7 +36,7 @@ jobs:
       - run: npm run test:browser
       - name: Build and run actual container
         run: |
-          docker build -t scrap-vector-lab:ci .
+          docker build --build-arg SCRAP_SOURCE_COMMIT=$SCRAP_SOURCE_COMMIT -t scrap-vector-lab:ci .
           docker run -d --name scrap-smoke -p 8080:8080 scrap-vector-lab:ci
           trap 'docker logs scrap-smoke; docker rm -f scrap-smoke' EXIT
           for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/ > /tmp/app.html && break || sleep 1; done
@@ -55,11 +57,11 @@ jobs:
             test-results-container/
           retention-days: 7
       - uses: actions/upload-pages-artifact@v3
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.repository == 'check5004/scrap-vector-lab-beta' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         with:
           path: dist
   deploy:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.repository == 'check5004/scrap-vector-lab-beta' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: verify
     runs-on: ubuntu-latest
     permissions:

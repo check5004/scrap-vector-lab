@@ -1,3 +1,4 @@
+import { APP_BUILD } from "./build-info";
 import {
   canvas,
   type MarkerDetectionReport,
@@ -15,7 +16,8 @@ export type DebugStageId =
   | "binary"
   | "contours"
   | "polygon"
-  | "api";
+  | "api"
+  | "tuning";
 export interface DebugStage {
   id: DebugStageId;
   title: string;
@@ -34,6 +36,7 @@ const labels: Record<DebugStageId, string> = {
   contours: "生の輪郭",
   polygon: "実寸ポリゴン",
   api: "外部API",
+  tuning: "自動調整",
 };
 export class DebugPanel {
   private stages = new Map<DebugStageId, DebugStage>();
@@ -81,6 +84,7 @@ export class DebugPanel {
   report() {
     return {
       version: 1,
+      app_build: APP_BUILD,
       stages: [...this.stages.values()].map(({ image, ...stage }) => stage),
       log: this.log,
       notice:

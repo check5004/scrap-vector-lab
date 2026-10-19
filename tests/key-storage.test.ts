@@ -12,6 +12,22 @@ const KEYS = {
  openrouter: 'sk-or-v1-storage-unit-test-only-not-a-real-secret',
 };
 const record = (provider: Provider, key = KEYS[provider]) => JSON.stringify({ version: 1, provider, key });
+test('beta never reads, migrates, overwrites or deletes production credential records', () => {
+ const {values,storage,store}=memoryStorage();
+ const production='scrap-vector-lab:provider-key:v1:openrouter';
+ values.set(production,record('openrouter'));
+ const operations:string[]=[];
+ const observed=createProviderKeyStore(()=>({
+  getItem(name){operations.push(name);return storage.getItem(name);},
+  setItem(name,value){operations.push(name);storage.setItem(name,value);},
+  removeItem(name){operations.push(name);storage.removeItem(name);},
+ }));
+ assert.equal(observed.load('openrouter').key,'');
+ observed.save('openrouter',KEYS.openrouter);observed.clear('openrouter');
+ assert.equal(values.get(production),record('openrouter'));
+ assert.ok(operations.every(name=>name.startsWith('scrap-vector-lab-beta:provider-key:v1:')));
+ assert.equal(store.load('openai').key,'');
+});
 function memoryStorage() {
  const values = new Map<string, string>();
  const storage: ProviderKeyStorage = {

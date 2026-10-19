@@ -62,3 +62,8 @@ Responses must report the requested Luna model (or a dated snapshot of it), comp
 - [OpenRouter live model catalog](https://openrouter.ai/api/v1/models), listing exact `openai/gpt-6-luna` and image/structured-output support when checked
 - [OpenRouter key creation reference](https://openrouter.ai/docs/api/api-reference/api-keys/create-keys) and [OAuth key response](https://openrouter.ai/docs/api/api-reference/o-auth/exchange-auth-code-for-api-key), documenting the current key prefix
 - [OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication) and [error handling](https://openrouter.ai/docs/api_reference/errors-and-debugging)
+
+
+## Beta candidate review
+
+The `0.3.0-dev` beta also offers a separately consented candidate-review loop. It sends the rectified photograph and actual mask/polygon overlays only when the user presses its start button, uses the selected provider, and is capped at 1–3 calls. Tokens and provider-reported costs are shown; missing costs stay unknown. See [the beta contract](BETA_RELEASE.md). Beta keys use `scrap-vector-lab-beta:provider-key:v1:*`; production key names are not read or migrated. GitHub Pages project paths still share an origin, so this avoids collisions rather than creating a security boundary.
