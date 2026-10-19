@@ -1,4 +1,4 @@
-/** The beta's single photo → method → analysis → result surface. */
+/** The single photo → method → analysis → result surface. */
 export function createAppShell(
   base: string,
   APP_VERSION: string,
@@ -12,7 +12,7 @@ export function createAppShell(
     '<p class="hint">API呼出し上限は、解析方法の「Bの追加チェック」で設定できます。</p>',
   );
   const sourceCommit = APP_BUILD.source_commit === 'local'
-    ? 'beta/auto-threshold-20261019'
+    ? 'main'
     : APP_BUILD.source_commit;
 
   return `<div class="unified-app">
@@ -22,7 +22,7 @@ export function createAppShell(
       <span class="lab-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6 5h20v9H16v13H6Z"/><path d="M3 2h5M2 2v5M24 2h6v5M2 24v6h5M25 25h5v5h-5"/></svg></span>
       <span><strong>端材ラボ</strong><small>SCRAP VECTOR LAB</small></span>
     </a>
-    <div class="lab-release"><span class="lab-beta">BETA</span><a href="https://check5004.github.io/scrap-vector-lab/" target="_blank" rel="noopener">通常版 ↗</a></div>
+    <div class="lab-release"><a href="https://check5004.github.io/scrap-vector-lab-beta/" target="_blank" rel="noopener">ベータ版 ↗</a></div>
   </header>
 
   <main class="lab-workflow">
@@ -87,7 +87,7 @@ export function createAppShell(
           <div class="api-fields"><label class="field">API接続先<select id="provider"><option value="openrouter" selected>OpenRouter（OpenRouterのキー）</option><option value="openai">OpenAI直接（OpenAIのキー）</option></select></label><label class="field"><span id="apiKeyLabel">OpenRouter APIキー（このブラウザに保存）</span><input id="apiKey" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false" aria-describedby="keyStorageHelp keyStorageStatus"></label></div>
           <p id="providerTarget" class="provider-target"></p><p id="keyStorageStatus" class="provider-note" role="status" aria-live="polite"></p><p id="keyValidation" class="provider-note" role="status"></p>
           <div class="key-settings-actions"><button id="clearKey" type="button">この接続先の保存キーを削除</button></div>
-          <details class="key-help"><summary>保存と送信について</summary><p id="keyStorageHelp" class="hint">ベータ専用の保存名を使い、本番の保存キーは読込・移行・削除しません。同じホスト名のため完全なセキュリティ隔離ではありません。入力したキーは接続先ごとに、この端末・ブラウザのlocalStorageへ自動保存され、リロード後も復元されます。共有端末では使わず、利用後は削除してください。暗号化保存ではなく、同じサイト（ホスト名）のページや拡張機能から読まれる可能性があります。別の端末・ブラウザには同期しません。プライベートモードやサイトデータ削除では失われる場合があります。保存だけではAPIに送信しません。</p><p class="hint">ブラウザでのキー入力は信頼する端末・このPoC限定でご利用ください。キーなしでは外部APIを実行しません。接続先ごとのキーが必要です。失敗時の代替推論・架空結果はありません。</p></details>
+          <details class="key-help"><summary>保存と送信について</summary><p id="keyStorageHelp" class="hint">通常版の従来の保存名を使い、保存済みキーを引き継ぎます。ベータ版の保存キーは読込・移行・削除しません。同じホスト名のため完全なセキュリティ隔離ではありません。入力したキーは接続先ごとに、この端末・ブラウザのlocalStorageへ自動保存され、リロード後も復元されます。共有端末では使わず、利用後は削除してください。暗号化保存ではなく、同じサイト（ホスト名）のページや拡張機能から読まれる可能性があります。別の端末・ブラウザには同期しません。プライベートモードやサイトデータ削除では失われる場合があります。保存だけではAPIに送信しません。</p><p class="hint">ブラウザでのキー入力は信頼する端末・このPoC限定でご利用ください。キーなしでは外部APIを実行しません。接続先ごとのキーが必要です。失敗時の代替推論・架空結果はありません。</p></details>
           <button id="closeKeySettings" type="button" class="close-key-settings">設定を閉じて解析に戻る ↑</button>
         </details>
         <div id="analysisFailure" class="analysis-failure" hidden role="alert"><div><strong>解析を完了できませんでした</strong><p id="analysisFailureMessage">写真や設定を確認して、もう一度お試しください。</p></div><div class="recovery-actions"><button id="retryAnalysis" type="button">もう一度解析</button><button id="failureSettings" type="button">設定を確認</button></div></div>
@@ -120,6 +120,6 @@ export function createAppShell(
     </details>
   </main>
 
-  <footer class="lab-footer"><div><p>計測値は目安です。マーカーと測定面を同じ平面にし、重要な寸法は必ず実測してください。</p><details><summary>精度と撮影の注意</summary><p>検証用ツールです。0.1 mm/pxは画像の刻み幅であり、計測精度ではありません。厚み・反り・カメラのレンズ歪み・斜め撮影・印刷倍率で誤差が生じます。AIは穴や細部を見落とすことがあります。マーカーはDICT_4X4_50、0: 左上・1: 右上・2: 右下・3: 左下です。</p></details></div><div class="footer-meta"><span>BETA · <span id="appVersion">${APP_VERSION}</span></span><a href="https://github.com/check5004/scrap-vector-lab/tree/${sourceCommit}" target="_blank" rel="noopener">ソース・検証手順 ↗</a></div></footer>
+  <footer class="lab-footer"><div><p>計測値は目安です。マーカーと測定面を同じ平面にし、重要な寸法は必ず実測してください。</p><details><summary>精度と撮影の注意</summary><p>検証用ツールです。0.1 mm/pxは画像の刻み幅であり、計測精度ではありません。厚み・反り・カメラのレンズ歪み・斜め撮影・印刷倍率で誤差が生じます。AIは穴や細部を見落とすことがあります。マーカーはDICT_4X4_50、0: 左上・1: 右上・2: 右下・3: 左下です。</p></details></div><div class="footer-meta"><span>VERSION · <span id="appVersion">${APP_VERSION}</span></span><a href="https://github.com/check5004/scrap-vector-lab/tree/${sourceCommit}" target="_blank" rel="noopener">ソース・検証手順 ↗</a></div></footer>
 </div>`;
 }

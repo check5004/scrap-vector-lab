@@ -1,8 +1,7 @@
-name: Verify beta and deploy isolated Pages
+name: Verify stable and deploy production Pages
 on:
   push:
-    branches: [main, "beta/**"]
-  pull_request:
+    branches: [main, "release/0.3.0"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,13 +12,16 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      stable: ${{ steps.release.outputs.stable }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: npm
-      - name: Verify pinned beta source and version
+      - name: Verify stable repository, source commit, channel and version
+        id: release
         run: node scripts/verify-release.mjs
       - uses: actions/setup-python@v5
         with:
@@ -57,11 +59,11 @@ jobs:
             test-results-container/
           retention-days: 7
       - uses: actions/upload-pages-artifact@v3
-        if: github.repository == 'check5004/scrap-vector-lab-beta' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: steps.release.outputs.stable == 'true' && github.repository == 'check5004/scrap-vector-lab' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         with:
           path: dist
   deploy:
-    if: github.repository == 'check5004/scrap-vector-lab-beta' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: needs.verify.outputs.stable == 'true' && github.repository == 'check5004/scrap-vector-lab' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: verify
     runs-on: ubuntu-latest
     permissions:

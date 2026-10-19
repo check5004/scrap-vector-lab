@@ -1,12 +1,12 @@
-# 端材ラボ · Scrap Vector Lab Beta
+# 端材ラボ · Scrap Vector Lab
 
 Smartphone-photo scrap-material vectorization and per-edge measurement PoC. A **separate, static project** with real ArUco calibration, real browser-local neural segmentation, optional GPT-6 Luna visual inference, and a touch-friendly polygon editor.
 
-## Beta 0.3.0-dev.3
+## Stable 0.3.0
 
-This beta has one primary flow: choose a photo, choose **クラウドAI（A）** or **この端末のAI（B）**, then press **解析する**. Marker detection, rectification, the selected real AI method, bounded B threshold/epsilon search, and dimensions run continuously in the same scene. B’s optional paid visual-review loop is off by default; enabling it beside the method choice includes its disclosed provider and call cap in that single explicit start. Manual B threshold/epsilon controls, bounded-search candidates and expert visual review are grouped in the closed **解析の詳細設定** within step **02**. The optional upper-edge correction and exports remain in step **03**. Expert per-stage controls and diagnostics are collapsed. **Beta deployment does not modify the production app or its main branch; stable releases use a separately reviewed release workflow.** The separate beta URL is https://check5004.github.io/scrap-vector-lab-beta/ . See [release isolation, source/distribution commit mapping, version contract, usage, and limitations](docs/BETA_RELEASE.md).
+This release has one primary flow: choose a photo, choose **クラウドAI（A）** or **この端末のAI（B）**, then press **解析する**. Marker detection, rectification, the selected real AI method, bounded B threshold/epsilon search, and dimensions run continuously in the same scene. B’s optional paid visual-review loop is off by default; enabling it beside the method choice includes its disclosed provider and call cap in that single explicit start. Manual B threshold/epsilon controls, bounded-search candidates and expert visual review are grouped in the closed **解析の詳細設定** within step **02**. The optional upper-edge correction and exports remain in step **03**. Expert per-stage controls and diagnostics are collapsed. The production URL is https://check5004.github.io/scrap-vector-lab/ . See [stable version, source provenance, storage compatibility, and deployment guards](docs/STABLE_RELEASE.md). The independently maintained [0.3.0-dev.3 beta](https://check5004.github.io/scrap-vector-lab-beta/) retains its separate [source/distribution mapping contract](docs/BETA_RELEASE.md).
 
-Local search uses actual neural masks and does not promise an optimum or improved measurement accuracy. The original result can be compared and restored. The original filled-hole failure remains visible. Beta keys use their own provider-specific namespace and are never imported from production; both URLs still share the same browser origin.
+Local search uses actual neural masks and does not promise an optimum or improved measurement accuracy. The original result can be compared and restored. The original filled-hole failure remains visible. Production retains the exact existing provider-key slots, so saved production keys survive this update. Beta keys are never read, imported, changed, or deleted by stable; both URLs still share the same browser origin.
 
 ## What is implemented
 
@@ -76,7 +76,7 @@ Open http://localhost:8080. The build regenerates fixtures, verifies/downloads a
 
 ## GitHub Pages
 
-`Verify beta and deploy isolated Pages` verifies the pinned source mapping, then builds from source, regenerates the synthetic fixtures, verifies model/runtime integrity, runs unit and real-browser tests, builds and starts Docker with HTTP/model-hash smoke tests, then publishes `dist` with GitHub Pages. Select GitHub Actions as the Pages source. Relative Vite base `./` works under `/scrap-vector-lab-beta/`. Deployment is gated on tests and the exact beta repository/main reference. Production deployment settings are untouched.
+`Verify stable and deploy production Pages` verifies stable `0.3.0` package/lock/build metadata, the original repository, exact allowed branch, and full checked-out source commit before regenerating fixtures, verifying model/runtime integrity, running units and the complete real-browser suite, and building/starting Docker with browser, HTTP, MIME and model-hash checks. It uses the stable commit itself as provenance; no distribution mapping is accepted. Pushes to `release/0.3.0` run the complete verification without deployment. Pages artifact upload and deployment require successful verification, its explicit stable guard, and `check5004/scrap-vector-lab` at `refs/heads/main`. Select GitHub Actions as the Pages source. Relative Vite base `./` works under `/scrap-vector-lab/`. The separate beta workflow remains independent.
 
 No backend, database, analytics, inventory, OCR or nesting subsystem is included. API keys are stored only in the browser as described below.
 

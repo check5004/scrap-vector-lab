@@ -1,5 +1,7 @@
 # Isolated automatic-adjustment beta
 
+This document describes the separately maintained beta source branch and beta distribution repository, including their mapping/verifier/workflow. The stable checkout uses its own direct-commit contract: see [stable release 0.3.0](STABLE_RELEASE.md).
+
 Release line: **0.3.0-dev.3**. This is a beta of the existing measurement app, not a replacement for the production URL.
 
 ## Source and delivery

@@ -1,34 +1,39 @@
-import { readFile, appendFile } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { readFile, appendFile, access } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
+
+// Stable provenance is this original-repository commit itself. Never read a
+// beta distribution mapping, fetch a different source tree, or accept a tag/PR.
 const sourceRepository = 'check5004/scrap-vector-lab';
-const betaRepository = 'check5004/scrap-vector-lab-beta';
-const repository = process.env.GITHUB_REPOSITORY;
-let commit = process.env.GITHUB_SHA;
-if (repository === betaRepository) {
-  const mapping = JSON.parse(await readFile('release-source.json','utf8'));
-  if (mapping.repository !== sourceRepository || mapping.branch !== 'beta/auto-threshold-20261019' || !/^[a-f0-9]{40}$/.test(mapping.commit)) throw Error('Invalid pinned beta source mapping.');
-  commit = mapping.commit;
-  const response = await fetch(`https://api.github.com/repos/${sourceRepository}/git/trees/${commit}?recursive=1`, {headers:{Accept:'application/vnd.github+json'},redirect:'error'});
-  if (!response.ok) throw Error(`Cannot verify public source tree: HTTP ${response.status}`);
-  const tree = await response.json();
-  if (tree.truncated || !Array.isArray(tree.tree)) throw Error('Incomplete source tree.');
-  const remote = tree.tree.filter(item => item.type === 'blob');
-  const local = execFileSync('git',['ls-files','-z'],{encoding:'utf8'}).split('\0').filter(Boolean).filter(p=>p!=='release-source.json');
-  if (local.length !== remote.length || remote.some(item=>!local.includes(item.path))) throw Error('Distribution paths differ from pinned source.');
-  for (const item of remote) {
-    const bytes = await readFile(item.path);
-    const sha = createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
-    if (sha !== item.sha || item.mode !== '100644') throw Error(`Distribution differs from pinned source: ${item.path}`);
-  }
-  console.log(`Verified ${remote.length} source blobs against ${sourceRepository}@${commit}`);
-} else if (repository !== sourceRepository || !process.env.GITHUB_REF?.startsWith('refs/heads/beta/')) {
-  throw Error('This beta workflow may only run in the beta repository or an original-repository beta branch.');
+const releaseVersion = '0.3.0';
+const allowedRefs = new Set(['refs/heads/main', 'refs/heads/release/0.3.0']);
+if (process.env.GITHUB_REPOSITORY !== sourceRepository || !allowedRefs.has(process.env.GITHUB_REF)) {
+  throw Error('Stable verification requires the original repository main or release/0.3.0 branch.');
 }
-if (!/^[a-f0-9]{40}$/.test(commit ?? '')) throw Error('Missing full source commit.');
-if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV,`SCRAP_SOURCE_COMMIT=${commit}\n`);
-const {version}=JSON.parse(await readFile('package.json','utf8'));
-if(typeof version!=='string'||!/^\d+\.\d+\.\d+-dev\.\d+$/.test(version))throw Error('Expected explicit development release version.');
-const buildInfo=await readFile('src/build-info.ts','utf8');
-if(!buildInfo.includes(`RELEASE_VERSION = '${version}'`))throw Error('Package and application release versions differ.');
-console.log(`Source version: ${version}+${commit.slice(0,7)}`);
+const commit = process.env.GITHUB_SHA;
+if (!/^[a-f0-9]{40}$/.test(commit ?? '')) throw Error('Missing full stable source commit.');
+const checkoutCommit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+if (checkoutCommit !== commit) throw Error('Stable source commit must match the checked-out commit.');
+if (process.env.SCRAP_SOURCE_COMMIT !== undefined && process.env.SCRAP_SOURCE_COMMIT !== commit) {
+  throw Error('Stable source override must match the checked-out commit.');
+}
+try {
+  await access('release-source.json');
+  throw Error('Stable releases must not contain a beta distribution source mapping.');
+} catch (error) {
+  if (error.code !== 'ENOENT') throw error;
+}
+const { version } = JSON.parse(await readFile('package.json', 'utf8'));
+if (version !== releaseVersion) throw Error('Expected stable release version 0.3.0.');
+const lock = JSON.parse(await readFile('package-lock.json', 'utf8'));
+if (lock.version !== version || lock.packages?.['']?.version !== version) throw Error('Package lock release versions differ.');
+const buildInfo = await readFile('src/build-info.ts', 'utf8');
+if (!/^export const RELEASE_VERSION = '0\.3\.0';$/m.test(buildInfo)) throw Error('Package and application stable release versions differ.');
+if (!/^  channel: 'stable',$/m.test(buildInfo)) throw Error('Expected stable build channel.');
+if (!/^  source_repository: 'check5004\/scrap-vector-lab',$/m.test(buildInfo)) throw Error('Unexpected stable source repository.');
+if (!/^  source_commit: SOURCE_COMMIT,$/m.test(buildInfo)) throw Error('Stable build must use the verified source commit.');
+
+// Emit deploy authorization only after every check succeeds. Failed validation
+// must never leave an environment override or a successful stable output.
+if (process.env.GITHUB_ENV) await appendFile(process.env.GITHUB_ENV, `SCRAP_SOURCE_COMMIT=${commit}\n`);
+if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `stable=true\nsource_commit=${commit}\n`);
+console.log(`Stable source version: ${version}+${commit.slice(0, 7)}`);

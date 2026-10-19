@@ -1,4 +1,4 @@
-# Beta automatic-adjustment regression tests
+# Stable automatic-adjustment regression tests
 
 ## Scope and evidence
 
@@ -117,7 +117,7 @@ by test discovery alone. The existing one-click and stage-level tests are kept.
 | --- | --- |
 | AI-textured L-shape, desktop and Pixel 7 | Genuine inference timing and pinned model hash; bounded threshold/epsilon search; real candidate overlays; exact 0.501 mm epsilon survives the HTML range, candidate application, polygon diagnostics, and JSON provenance |
 | Before/after | The prior image is decodable; restoring recovers exact vertices, holes, area, calibration, settings, and provenance; candidate list remains usable |
-| Build identity | Header, tuning record, diagnostic export, geometry provenance, and DXF comment agree on `0.3.0-dev.3+<short-sha>` or `+local`; full source commit agrees with the displayed short SHA |
+| Build identity | Header, tuning record, diagnostic export, geometry provenance, and DXF comment agree on `0.3.0+<short-sha>` or `+local`; full source commit agrees with the displayed short SHA |
 | Cancellation and repetition | A deterministic same-turn start/duplicate-start/stop sequence retains prior geometry and provenance; repeated runs do not accumulate old attempts; source changes clear comparison, candidates, review state and exports; a new source receives genuine fresh ONNX inference |
 | Invalid manual settings | Deliberately corrupting numeric UI bounds creates collapsed geometry or empty foreground; recovery reuses the original genuine mask and stays within supported settings; ambiguous results retain the previous geometry until manual selection |
 | Known hole miss | The legacy hole fixture still reports its real model miss and truth discrepancy; tuning does not hide hole/semantic-accuracy warnings |
@@ -128,7 +128,7 @@ by test discovery alone. The existing one-click and stage-level tests are kept.
 | Failure/cancellation accounting | A failed sent request has unknown cost, is not retried, and is not labeled evaluated; cancellation retains geometry and a late locally fulfilled reply cannot repopulate state after a source change |
 | Stale provenance | A manual threshold/epsilon change clears the previous LLM evaluation and automatic-adjustment provenance from geometry and diagnostic exports |
 | C editing gates | Unfinished hole drawings and pointer-down vertex drags disable search, review, restore, candidate application, and exports; canceling the draft retains prior C geometry |
-| Storage separation | Beta never reads/writes/deletes production provider-key slots; saving and clearing affects beta slots only; the UI still warns that same-origin storage names are not a security boundary |
+| Storage separation | Stable restores existing production provider-key records with their exact historical slot names and never reads/writes/deletes beta slots; saving and clearing affects production slots only; the UI still warns that same-origin storage names are not a security boundary |
 | Mobile layout | Real inference, candidate comparisons, expanded diagnostics/review, and restore remain within the viewport; a screenshot is retained as a test artifact |
 
 The invalid-settings test only changes control bounds/values to reach recovery
@@ -152,7 +152,7 @@ npx playwright test tests/browser/unified-analysis.spec.ts tests/browser/analysi
 The standard `npm run test:browser` includes this file. The existing CI workflow
 runs the complete browser suite on the built static app and again against the
 actual container on Chromium. Runtime assertions must pass there before the
-beta is described as verified. `APP_URL` may target a separately served beta;
+stable release is described as verified. `APP_URL` may target an isolated test server;
 never point this safety fixture at a production environment carrying real keys.
 
 For a browser-free syntax/discovery check:
@@ -182,3 +182,9 @@ HTML reports, screenshots, and container reports are the relevant artifacts.
   disconnected regions and hard search budgets. Browser tests focus on real
   end-to-end integration rather than replacing that matrix with artificial AI.
 - The tests do not claim the tool measures real scrap to a physical tolerance.
+
+## Stable release guards
+
+`tests/release-verifier.test.ts` exercises the production verifier with synthetic local fixtures and a controlled Git-command test double (no network or user credentials). It allows only `check5004/scrap-vector-lab` on `main` or `release/0.3.0`, requires stable `0.3.0` package/lock/build metadata and an exact full checked-out source SHA, rejects beta repositories, unrelated refs, mismatches and distribution mapping files, and confirms failures emit no deploy authorization. Workflow assertions preserve the same units, static-app browser suite, actual-container browser suite and asset checks, and require the stable guard plus original repository/main for Pages upload and deploy. The release branch is verification-only.
+
+Storage units and browser tests use synthetic version-1 production records to verify pre-upgrade keys survive load/reload without a namespace migration, while instrumented beta slots are never read, overwritten or deleted. No real browser profile or paid API request is used.

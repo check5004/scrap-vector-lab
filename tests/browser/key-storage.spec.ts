@@ -18,6 +18,33 @@ test.beforeEach(async ({ context, baseURL }) => {
   await context.routeWebSocket('**/*', socket => socket.close());
 });
 
+test('stable upgrade restores the exact original saved-key records and keeps them unchanged across reload', async ({ page }) => {
+  expect(routerSlot).toBe('scrap-vector-lab:provider-key:v1:openrouter');
+  expect(openaiSlot).toBe('scrap-vector-lab:provider-key:v1:openai');
+  const records = [
+    { slot: 'scrap-vector-lab:provider-key:v1:openrouter', value: JSON.stringify({ version: 1, provider: 'openrouter', key: routerKey }) },
+    { slot: 'scrap-vector-lab:provider-key:v1:openai', value: JSON.stringify({ version: 1, provider: 'openai', key: openaiKey }) },
+  ];
+  const network: string[] = [];
+  page.on('request', request => { if (/openrouter\.ai|api\.openai\.com/.test(request.url())) network.push(request.url()); });
+  // Fresh browser-test context only. Seed the exact historical record format;
+  // do not import a real profile or inspect any user credentials.
+  await page.goto('/');
+  await page.evaluate(items => { for (const item of items) localStorage.setItem(item.slot, item.value); }, records);
+  for (let reload = 0; reload < 2; reload++) {
+    await page.reload(); await openKeys(page);
+    await expect(page.locator('#apiKey')).toHaveValue(routerKey);
+    await page.locator('#provider').selectOption('openai');
+    await expect(page.locator('#apiKey')).toHaveValue(openaiKey);
+    expect(await page.evaluate(items => items.map(item => localStorage.getItem(item.slot)), records)).toEqual(records.map(item => item.value));
+  }
+  await expect(page.locator('#keyStorageHelp')).toContainText('保存済みキーを引き継ぎます');
+  await expect(page.locator('.lab-header')).not.toContainText('BETA');
+  await expect(page.locator('.lab-header a[href="https://check5004.github.io/scrap-vector-lab-beta/"]')).toHaveText('ベータ版 ↗');
+  await expect(page.locator('#appVersion')).toHaveText(/^0\.3\.0\+(local|[a-f0-9]{7})$/);
+  expect(network).toEqual([]);
+});
+
 test('provider-specific keys survive reload, stay masked, never auto-send, and delete independently', async ({ page }) => {
   const network: string[] = [];
   page.on('request', request => { if (/openrouter\.ai|api\.openai\.com/.test(request.url())) network.push(request.url()); });

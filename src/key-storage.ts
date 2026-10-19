@@ -1,9 +1,10 @@
 import { validateProviderKey, type Provider } from './ai';
 
-/** Personal BYOK only: browser-local storage is readable by scripts on this origin. */
+/** Retain the original production slots; never access beta slots.
+ * Personal BYOK only: storage is readable by scripts on this origin. */
 export const PROVIDER_KEY_STORAGE_KEYS = Object.freeze({
- openai: 'scrap-vector-lab-beta:provider-key:v1:openai',
- openrouter: 'scrap-vector-lab-beta:provider-key:v1:openrouter',
+ openai: 'scrap-vector-lab:provider-key:v1:openai',
+ openrouter: 'scrap-vector-lab:provider-key:v1:openrouter',
 });
 export const MAX_PROVIDER_KEY_LENGTH = 4096;
 export const MAX_PROVIDER_KEY_RECORD_LENGTH = 8192;

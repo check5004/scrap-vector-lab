@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { APP_BUILD, APP_VERSION, RELEASE_VERSION } from '../src/build-info';
 import { createJson, createSvg, createDxf } from '../src/geometry';
-test('package, exports and diagnostics share the beta development version contract', () => {
+test('package, exports and diagnostics share the stable version contract', () => {
   const packageInfo = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   assert.equal(packageInfo.version, RELEASE_VERSION);
-  assert.match(APP_VERSION, /^0\.3\.0-dev\.3\+(local|[a-f0-9]{7})$/);
+  assert.equal(RELEASE_VERSION, '0.3.0');
+  assert.equal(APP_BUILD.channel, 'stable');
+  assert.equal(APP_BUILD.source_repository, 'check5004/scrap-vector-lab');
+  assert.match(APP_BUILD.source_commit, /^(local|[a-f0-9]{40})$/);
+  assert.match(APP_VERSION, /^0\.3\.0\+(local|[a-f0-9]{7})$/);
   const g = {outer:[{x:1,y:1},{x:20,y:1},{x:20,y:20},{x:1,y:20}],holes:[]};
   const board = {width:100,height:100};
   assert.deepEqual(JSON.parse(createJson(g,board)).provenance.app_build,APP_BUILD);

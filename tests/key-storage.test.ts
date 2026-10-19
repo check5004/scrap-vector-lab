@@ -12,21 +12,52 @@ const KEYS = {
  openrouter: 'sk-or-v1-storage-unit-test-only-not-a-real-secret',
 };
 const record = (provider: Provider, key = KEYS[provider]) => JSON.stringify({ version: 1, provider, key });
-test('beta never reads, migrates, overwrites or deletes production credential records', () => {
- const {values,storage,store}=memoryStorage();
- const production='scrap-vector-lab:provider-key:v1:openrouter';
- values.set(production,record('openrouter'));
- const operations:string[]=[];
- const observed=createProviderKeyStore(()=>({
-  getItem(name){operations.push(name);return storage.getItem(name);},
-  setItem(name,value){operations.push(name);storage.setItem(name,value);},
-  removeItem(name){operations.push(name);storage.removeItem(name);},
+test('stable keeps the exact original production slots and restores pre-upgrade records without rewriting', () => {
+ assert.deepEqual(PROVIDER_KEY_STORAGE_KEYS, {
+  openai: 'scrap-vector-lab:provider-key:v1:openai',
+  openrouter: 'scrap-vector-lab:provider-key:v1:openrouter',
+ });
+ const { values, storage } = memoryStorage();
+ for (const provider of ['openai', 'openrouter'] as const) {
+  values.set(`scrap-vector-lab:provider-key:v1:${provider}`, record(provider));
+ }
+ const before = [...values];
+ const changes: string[] = [];
+ const loadOnlyStorage = {
+  getItem: storage.getItem,
+  setItem(name: string) { changes.push(`set:${name}`); },
+  removeItem(name: string) { changes.push(`remove:${name}`); },
+ };
+ for (let reload = 0; reload < 2; reload++) {
+  const store = createProviderKeyStore(() => loadOnlyStorage);
+  for (const provider of ['openai', 'openrouter'] as const) {
+   assert.deepEqual(store.load(provider), { key: KEYS[provider], status: 'loaded' });
+  }
+ }
+ assert.deepEqual([...values], before);
+ assert.deepEqual(changes, []);
+});
+
+test('stable never reads, migrates, overwrites or deletes beta credential records', () => {
+ const { values, storage } = memoryStorage();
+ const betaRecords = ['openai', 'openrouter'].map(provider => [
+  `scrap-vector-lab-beta:provider-key:v1:${provider}`, record(provider as Provider),
+ ] as const);
+ for (const [slot, value] of betaRecords) values.set(slot, value);
+ const operations: string[] = [];
+ const observed = createProviderKeyStore(() => ({
+  getItem(name) { operations.push(name); return storage.getItem(name); },
+  setItem(name, value) { operations.push(name); storage.setItem(name, value); },
+  removeItem(name) { operations.push(name); storage.removeItem(name); },
  }));
- assert.equal(observed.load('openrouter').key,'');
- observed.save('openrouter',KEYS.openrouter);observed.clear('openrouter');
- assert.equal(values.get(production),record('openrouter'));
- assert.ok(operations.every(name=>name.startsWith('scrap-vector-lab-beta:provider-key:v1:')));
- assert.equal(store.load('openai').key,'');
+ for (const provider of ['openai', 'openrouter'] as const) {
+  assert.deepEqual(observed.load(provider), { key: '', status: 'empty' });
+  assert.equal(observed.save(provider, KEYS[provider]).status, 'saved');
+  assert.equal(observed.clear(provider).status, 'cleared');
+  assert.deepEqual(observed.load(provider), { key: '', status: 'empty' });
+ }
+ for (const [slot, value] of betaRecords) assert.equal(values.get(slot), value);
+ assert.ok(operations.every(name => name === PROVIDER_KEY_STORAGE_KEYS.openai || name === PROVIDER_KEY_STORAGE_KEYS.openrouter));
 });
 function memoryStorage() {
  const values = new Map<string, string>();
