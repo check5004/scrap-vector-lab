@@ -194,7 +194,7 @@ async function mockProvider(page: Page, selected: Provider, respond: (candidates
 }
 
 // The core real-inference flow also runs under the configured Pixel 7 project.
-test('real AI-textured search commits exact epsilon, restores before state, and exports the same beta build', async ({ page }, info) => {
+test('real AI-textured search commits exact epsilon, restores before state, and exports the same stable build', async ({ page }, info) => {
   test.setTimeout(240_000);
   await openSample(page, 'ai-l-shape');
   await expect(page.locator('#autoRecover')).toBeChecked();
@@ -227,7 +227,7 @@ test('real AI-textured search commits exact epsilon, restores before state, and 
   expect(after.board_size_mm).toEqual(before.board_size_mm);
   await expect(page.locator('#warnings')).toContainText('精度・写真との一致を保証しません');
   const version = await page.locator('#appVersion').innerText();
-  expect(version).toMatch(/^0\.3\.0-dev\.5\+(?:[a-f0-9]{7}|local)$/);
+  expect(version).toMatch(/^0\.4\.0\+(?:[a-f0-9]{7}|local)$/);
   expect(after.provenance.app_build).toEqual(diagnostics.app_build);
   expect(result.app_build).toEqual(diagnostics.app_build);
   expect(diagnostics.app_build.version).toBe(version);
