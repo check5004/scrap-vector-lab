@@ -1,18 +1,18 @@
-# Stable release 0.3.0
+# Stable release 0.4.0
 
 Production URL: https://check5004.github.io/scrap-vector-lab/
 
-This is the production variant of the reviewed `0.3.0-dev.3` layout and analysis flow. It changes release identity, repository/deployment guards, production key-slot selection, and channel-specific labels/docs. Measurement, neural inference, bounded search, provider consent/cost gates, editing, and export behavior retain the reviewed implementation. Stable is a release channel, not a physical-accuracy certification.
+This is the production variant of the reviewed `0.3.0-dev.5` automatic-curve implementation at source `6ce477f2899bf55234ce00573b876a65e062881a`. It changes release identity, repository/deployment guards, production key-slot selection, and channel-specific labels/docs. Measurement, neural inference, bounded search, provider consent/cost gates, editing, and export behavior retain the reviewed implementation. Stable is a release channel, not a physical-accuracy certification.
 
 ## Source and deployment
 
 - Source and deployed repository: `check5004/scrap-vector-lab`.
-- `release/0.3.0` is verification-only; `main` is the production deployment branch.
-- `scripts/verify-release.mjs` accepts only those exact refs in that exact repository. It requires package, package-lock and build metadata to say `0.3.0`, channel `stable`, and the original source repository. It rejects beta repositories, unrelated branches, PR merge refs, tags, and `release-source.json` distribution mappings.
+- `release/0.4.0` is verification-only; `main` is the production deployment branch.
+- `scripts/verify-release.mjs` accepts only those exact refs in that exact repository. It requires package, package-lock and build metadata to say `0.4.0`, channel `stable`, and the original source repository. It rejects beta repositories, unrelated branches, PR merge refs, tags, and `release-source.json` distribution mappings.
 - `GITHUB_SHA` must be a full lowercase Git SHA and match `git rev-parse HEAD`. An existing `SCRAP_SOURCE_COMMIT` override must match it. Only after every check passes does verification write that same SHA into `SCRAP_SOURCE_COMMIT` and emit the successful stable guard.
-- The screen, tuning record, diagnostics, measurement JSON/SVG, and DXF comment use `0.3.0+<7-character source SHA>` and the same full stable source commit. Local builds use `0.3.0+local`. There is no source/distribution commit remapping.
-- The workflow keeps the full fixture, pinned-asset, unit, desktop/mobile browser, Docker build, actual-container browser, MIME and model-hash verification. Only successful original-repository `main` push/manual runs with the stable guard can upload a Pages artifact and deploy. Release-branch verification cannot deploy.
-- The separate [beta contract](BETA_RELEASE.md) continues to describe `0.3.0-dev.3`, its beta source branch and its independently mapped distribution repository. A production release does not silently update that beta.
+- The screen, tuning record, diagnostics, measurement JSON/SVG, and DXF comment use `0.4.0+<7-character source SHA>` and the same full stable source commit. Local builds use `0.4.0+local`. There is no source/distribution commit remapping.
+- The workflow keeps the full fixture, pinned-asset, unit, desktop/mobile browser, Docker build, actual-container browser, MIME and model-hash verification. The verification job budget is 35 minutes. Only successful original-repository `main` push/manual runs with the stable guard can upload a Pages artifact and deploy. Release-branch verification cannot deploy.
+- The separate [beta contract](BETA_RELEASE.md) continues to describe the dev.5 beta history, its beta source branch and its independently mapped distribution repository. A production release does not silently update that beta.
 
 ## Existing keys and beta isolation
 
@@ -32,3 +32,7 @@ Step **02** contains the default-closed **解析の詳細設定** with B thresho
 Actual U²-NetP masks still determine B geometry; scores reflect heuristic stability/preservation, not photograph correctness or measurement accuracy. The known filled-hole failure remains visible. Optional external review stays off by default, requires the explicit disclosed start, and cannot fix geometric ambiguity, guarantee correctness, or guarantee a dollar cap. Important dimensions require independent physical measurement.
 
 See [the regression matrix and browser verification limits](AUTO_TUNE_TESTING.md). Local unit/build/discovery success is not a browser pass; the exact stable commit must pass the permitted CI renderer and actual container before release verification is complete.
+
+## Automatic curves in 0.4.0
+
+Automatic curve generation defaults on within the same Analyze action. B fits the raw traced mask before DP; straight supports, corners and holes are retained within explicit error and operation budgets, otherwise the polygon is retained with a reason. A native mixed line/cubic response support is locally stub-tested only; live provider acceptance remains unverified and has no B dense-contour guarantee. Original/curve comparison, cancellation and optional handle refinement share the displayed/exported geometry. See [changes and remaining limitations](../CHANGELOG.md), [algorithm](AUTO_CURVES_ALGORITHM.md) and [A schema](A_NATIVE_CURVES.md).

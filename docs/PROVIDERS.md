@@ -64,6 +64,8 @@ Responses must report the requested Luna model (or a dated snapshot of it), comp
 - [OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication) and [error handling](https://openrouter.ai/docs/api_reference/errors-and-debugging)
 
 
-## Optional candidate review
+## Candidate review in stable 0.4.0
 
-Stable `0.3.0` offers an optional candidate-review loop, off by default. It sends the rectified photograph and actual mask/polygon overlays only when the user enables that setting beside method selection and presses Analyze (or explicitly uses its expert standalone start), uses the selected provider, and is capped at 1–3 calls. Tokens and provider-reported costs are shown; missing costs stay unknown. See [the stable release contract](STABLE_RELEASE.md). Production retains `scrap-vector-lab:provider-key:v1:openai` and `scrap-vector-lab:provider-key:v1:openrouter`, so existing saved production keys continue to load. Beta keys use `scrap-vector-lab-beta:provider-key:v1:*`; stable never reads, migrates, overwrites or deletes those beta records. GitHub Pages project paths still share an origin, so this avoids collisions rather than creating a security boundary.
+Stable `0.4.0` retains an optional candidate-review loop, off by default. It sends the rectified photograph and actual mask/polygon overlays only when the user enables that setting beside method selection and presses Analyze (or explicitly uses its expert standalone start), uses the selected provider, and is capped at 1–3 calls. Tokens and provider-reported costs are shown; missing costs stay unknown. See [the stable release contract](STABLE_RELEASE.md). Production keeps `scrap-vector-lab:provider-key:v1:*` and restores existing records. Beta slots `scrap-vector-lab-beta:provider-key:v1:*` are not read, migrated or deleted. GitHub Pages project paths still share an origin, so this avoids collisions rather than creating a security boundary.
+
+Native A line/cubic output support was promoted from dev.5. Live provider acceptance of that schema has not been verified; the local provider tests use explicit synthetic responses. See [native-curve limits](A_NATIVE_CURVES.md).

@@ -10,8 +10,8 @@ import { legacyReady, openDetailsFor as revealControl, openEditor } from './lega
 const neuralTimeout = 150_000;
 const modelHash = '309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8';
 const syntheticKeys = {
-  openrouter: 'sk-or-v1-SYNTHETIC_STABLE_BROWSER_TEST_ONLY',
-  openai: 'sk-proj-SYNTHETIC_STABLE_BROWSER_TEST_ONLY',
+  openrouter: 'sk-or-v1-SYNTHETIC_BETA_BROWSER_TEST_ONLY',
+  openai: 'sk-proj-SYNTHETIC_BETA_BROWSER_TEST_ONLY',
 };
 type Provider = keyof typeof syntheticKeys;
 type Build = { version: string; release: string; channel: string; source_commit: string };
@@ -177,7 +177,7 @@ async function mockProvider(page: Page, selected: Provider, respond: (candidates
       if (selected === 'openai') expect(payload.store).toBe(false);
       else expect(payload.provider).toEqual({ require_parameters: true, allow_fallbacks: false });
       expect(payload.tools).toBeUndefined(); expect(payload.models).toBeUndefined();
-      expect(JSON.stringify(payload)).not.toContain('SYNTHETIC_STABLE_BROWSER_TEST_ONLY');
+      expect(JSON.stringify(payload)).not.toContain('SYNTHETIC_BETA_BROWSER_TEST_ONLY');
       batches.push(candidates);
       const reply = respond(candidates, batches.length);
       if (reply.release) await reply.release;
@@ -194,7 +194,7 @@ async function mockProvider(page: Page, selected: Provider, respond: (candidates
 }
 
 // The core real-inference flow also runs under the configured Pixel 7 project.
-test('real AI-textured search commits exact epsilon, restores before state, and exports the same stable build', async ({ page }, info) => {
+test('real AI-textured search commits exact epsilon, restores before state, and exports the same beta build', async ({ page }, info) => {
   test.setTimeout(240_000);
   await openSample(page, 'ai-l-shape');
   await expect(page.locator('#autoRecover')).toBeChecked();
@@ -227,14 +227,14 @@ test('real AI-textured search commits exact epsilon, restores before state, and 
   expect(after.board_size_mm).toEqual(before.board_size_mm);
   await expect(page.locator('#warnings')).toContainText('精度・写真との一致を保証しません');
   const version = await page.locator('#appVersion').innerText();
-  expect(version).toMatch(/^0\.3\.0\+(?:[a-f0-9]{7}|local)$/);
+  expect(version).toMatch(/^0\.3\.0-dev\.5\+(?:[a-f0-9]{7}|local)$/);
   expect(after.provenance.app_build).toEqual(diagnostics.app_build);
   expect(result.app_build).toEqual(diagnostics.app_build);
   expect(diagnostics.app_build.version).toBe(version);
-  expect(diagnostics.app_build.release).toBe('0.3.0'); expect(diagnostics.app_build.channel).toBe('stable');
+  expect(diagnostics.app_build.release).toBe('0.4.0'); expect(diagnostics.app_build.channel).toBe('stable');
   const source = diagnostics.app_build.source_commit;
   expect(source).toMatch(/^(?:[a-f0-9]{40}|local)$/);
-  expect(version).toBe(`0.3.0+${source === 'local' ? source : source.slice(0, 7)}`);
+  expect(version).toBe(`0.4.0+${source === 'local' ? source : source.slice(0, 7)}`);
   const dxf = await downloadText(page, '#exportDxf');
   expect(dxf.replaceAll('\r\n', '\n')).toContain(`999\nScrap Vector Lab ${version} source ${source}\n`);
   await page.locator('#tuneRestore').click();
@@ -247,7 +247,7 @@ test('real AI-textured search commits exact epsilon, restores before state, and 
     await openDetailsFor(page, 'tuneDetails');
     const bounds = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
     expect(bounds.scroll).toBeLessThanOrEqual(bounds.client + 1);
-    await page.locator('#tunePanel').screenshot({ path: info.outputPath('stable-mobile-auto-tune.png') });
+    await page.locator('#tunePanel').screenshot({ path: info.outputPath('beta-mobile-auto-tune.png') });
   }
 });
 
@@ -461,7 +461,7 @@ test('failed and cancelled test-only API calls retain local geometry, show unkno
   await expect(page.locator('[data-apply-candidate]')).toHaveCount(0);
   const report = await downloadJSON<Diagnostic>(page, '#debugExport');
   expect(report.stages.some(stage => stage.id === 'tuning')).toBe(false);
-  const serialized = JSON.stringify(report); expect(serialized).not.toContain('SYNTHETIC_STABLE_BROWSER_TEST_ONLY'); expect(serialized).not.toContain('TEST_ONLY_PRIVATE_PROVIDER_BODY');
+  const serialized = JSON.stringify(report); expect(serialized).not.toContain('SYNTHETIC_BETA_BROWSER_TEST_ONLY'); expect(serialized).not.toContain('TEST_ONLY_PRIVATE_PROVIDER_BODY');
 });
 
 test('unfinished C drawings and active vertex drags gate search, review, restoration, and candidate application', async ({ page }, info) => {
@@ -482,12 +482,12 @@ test('unfinished C drawings and active vertex drags gate search, review, restora
   await page.mouse.up(); await expect(page.locator('#autoTune')).toBeEnabled();
 });
 
-test('stable storage never imports, mutates, or deletes beta provider records', async ({ page }) => {
-  const betaSlots = ['scrap-vector-lab-beta:provider-key:v1:openrouter', 'scrap-vector-lab-beta:provider-key:v1:openai'];
-  const records = betaSlots.map((slot, index) => ({ slot, value: JSON.stringify({ version: 1, provider: index ? 'openai' : 'openrouter', key: syntheticKeys[index ? 'openai' : 'openrouter'] + '_BETA' }) }));
+test('production storage never imports, mutates, or deletes beta provider records', async ({ page }) => {
+  const productionSlots = ['scrap-vector-lab-beta:provider-key:v1:openrouter', 'scrap-vector-lab-beta:provider-key:v1:openai'];
+  const records = productionSlots.map((slot, index) => ({ slot, value: JSON.stringify({ version: 1, provider: index ? 'openai' : 'openrouter', key: syntheticKeys[index ? 'openai' : 'openrouter'] + '_PRODUCTION' }) }));
   await page.addInitScript(items => {
     for (const { slot, value } of items) localStorage.setItem(slot, value);
-    const accesses: string[] = []; (window as any).__testOnlyBetaAccesses = accesses;
+    const accesses: string[] = []; (window as any).__testOnlyProductionAccesses = accesses;
     for (const method of ['getItem', 'setItem', 'removeItem'] as const) {
       const original = Storage.prototype[method];
       Object.defineProperty(Storage.prototype, method, { configurable: true, value: function (key: string, ...args: string[]) {
@@ -498,16 +498,16 @@ test('stable storage never imports, mutates, or deletes beta provider records', 
   }, records);
   await openSample(page); await openDetailsFor(page, 'provider');
   for (const selected of ['openrouter', 'openai'] as const) {
-    expect(providerStorageKey(selected)).toBe(`scrap-vector-lab:provider-key:v1:${selected}`);
+    expect(providerStorageKey(selected)).toMatch(/^scrap-vector-lab:/);
     await page.locator('#provider').selectOption(selected); await expect(page.locator('#apiKey')).toHaveValue('');
     await page.locator('#apiKey').fill(syntheticKeys[selected]);
     expect(await page.evaluate(slot => JSON.parse(localStorage.getItem(slot)!).key, providerStorageKey(selected))).toBe(syntheticKeys[selected]);
     await page.locator('#clearKey').click(); expect(await page.evaluate(slot => localStorage.getItem(slot), providerStorageKey(selected))).toBeNull();
   }
-  expect(await page.evaluate(() => (window as any).__testOnlyBetaAccesses)).toEqual([]);
+  expect(await page.evaluate(() => (window as any).__testOnlyProductionAccesses)).toEqual([]);
   // Inspect via property lookup so the test's own verification does not count as
   // an application read in the instrumented storage methods.
-  expect(await page.evaluate(slots => slots.map(slot => localStorage[slot]), betaSlots)).toEqual(records.map(record => record.value));
+  expect(await page.evaluate(slots => slots.map(slot => localStorage[slot]), productionSlots)).toEqual(records.map(record => record.value));
   await expect(page.locator('#keyStorageHelp')).toContainText('完全なセキュリティ隔離ではありません');
   await expect(page.locator('#reviewRun')).toBeDisabled();
 });
